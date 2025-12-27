@@ -1,0 +1,15 @@
+scoring:
+  weights:
+    ast_structure: 0.35
+    code_keywords: 0.25
+    complexity_match: 0.20
+    llm_confidence: 0.20
+
+  thresholds:
+    high_confidence: 0.80
+    medium_confidence: 0.60
+    low_confidence: 0.40
+
+  penalties:
+    conflicting_patterns: -0.15
+    missing_indicators: -0.10

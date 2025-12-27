@@ -1,0 +1,81 @@
+patterns:
+  divide_and_conquer:
+    name: "Divide y Vencerás"
+    indicators:
+      - "problema se divide en subproblemas"
+      - "combinación de soluciones"
+      - "tamaño reducido recursivamente"
+    ast_signatures:
+      - recursive_call
+      - problem_division
+      - result_combination
+    complexity_hints:
+      - "O(n log n)"
+      - "T(n) = aT(n/b) + f(n)"
+    examples:
+      - "merge_sort"
+      - "quick_sort"
+      - "binary_search"
+    confidence_weights:
+      recursive_calls: 0.4
+      division_pattern: 0.3
+      combination_step: 0.3
+
+  dynamic_programming:
+    name: "Programación Dinámica"
+    indicators:
+      - "subproblemas solapados"
+      - "subestructura óptima"
+      - "memoización o tabla"
+      - "construcción bottom-up"
+    ast_signatures:
+      - memoization_array
+      - table_filling
+      - optimal_substructure
+    complexity_hints:
+      - "O(n²)"
+      - "O(n*m)"
+    examples:
+      - "fibonacci_dp"
+      - "knapsack"
+      - "longest_common_subsequence"
+    confidence_weights:
+      memoization: 0.4
+      overlapping_subproblems: 0.3
+      optimal_substructure: 0.3
+
+  greedy:
+    name: "Algoritmo Voraz"
+    indicators:
+      - "elección localmente óptima"
+      - "sin backtracking"
+      - "construcción incremental"
+    ast_signatures:
+      - local_optimization
+      - single_pass
+      - no_backtrack
+    complexity_hints:
+      - "O(n log n)"
+      - "O(n)"
+    examples:
+      - "dijkstra"
+      - "prim"
+      - "huffman_coding"
+
+  backtracking:
+    name: "Backtracking"
+    indicators:
+      - "exploración exhaustiva"
+      - "retroceso cuando no hay solución"
+      - "poda de ramas"
+    ast_signatures:
+      - recursive_exploration
+      - backtrack_condition
+      - solution_validation
+    complexity_hints:
+      - "O(2^n)"
+      - "O(n!)"
+    examples:
+      - "n_queens"
+      - "sudoku_solver"
+      - "graph_coloring"

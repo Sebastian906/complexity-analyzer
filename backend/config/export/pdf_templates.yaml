@@ -1,0 +1,38 @@
+pdf_config:
+  page_size: "A4"
+  margins:
+    top: 2.5
+    bottom: 2.5
+    left: 2.0
+    right: 2.0
+  
+  fonts:
+    title: "Helvetica-Bold"
+    heading: "Helvetica-Bold"
+    body: "Helvetica"
+    code: "Courier"
+  
+  colors:
+    primary: "#2C3E50"
+    secondary: "#3498DB"
+    success: "#27AE60"
+    warning: "#F39C12"
+    danger: "#E74C3C"
+  
+  sections:
+    - name: "cover"
+      enabled: true
+    - name: "algorithm_code"
+      enabled: true
+    - name: "complexity_analysis"
+      enabled: true
+    - name: "line_by_line"
+      enabled: true
+    - name: "recurrence_equations"
+      enabled: true
+    - name: "patterns"
+      enabled: true
+    - name: "visualization"
+      enabled: true
+    - name: "validation"
+      enabled: true

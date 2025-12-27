@@ -1,0 +1,41 @@
+notation_rules:
+  big_o:
+    name: "Big O (Peor Caso)"
+    description: "Cota superior asintótica"
+    rules:
+      - "Considerar el peor escenario posible"
+      - "Ignorar constantes multiplicativas"
+      - "Tomar el término dominante"
+    
+  omega:
+    name: "Omega (Mejor Caso)"
+    description: "Cota inferior asintótica"
+    rules:
+      - "Considerar el mejor escenario posible"
+      - "Ignorar constantes multiplicativas"
+      - "Tomar el término dominante"
+  
+  theta:
+    name: "Theta (Caso Promedio)"
+    description: "Cota ajustada asintótica"
+    rules:
+      - "Considerar el caso promedio"
+      - "Requiere que Big O = Omega"
+      - "Tomar el término dominante"
+
+simplification_rules:
+  - pattern: "n + n²"
+    result: "n²"
+    reason: "término cuadrático domina"
+  
+  - pattern: "2n + 3n + 5"
+    result: "n"
+    reason: "eliminar constantes"
+  
+  - pattern: "log(n) + n"
+    result: "n"
+    reason: "término lineal domina"
+  
+  - pattern: "n * log(n) + n"
+    result: "n * log(n)"
+    reason: "n*log(n) domina a n"

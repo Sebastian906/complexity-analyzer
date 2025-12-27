@@ -1,0 +1,430 @@
+# Estructura del Proyecto: Analizador de Complejidades
+
+```
+complexity-analyzer-backend/
+│
+├── .env.example                           # Variables de entorno template
+├── .env                                   # Variables de entorno (gitignored)
+├── .gitignore
+├── README.md
+├── requirements.txt                       # Dependencias core
+├── requirements-dev.txt                   # Dependencias desarrollo
+├── pyproject.toml                         # Configuración del proyecto
+├── pytest.ini                             # Configuración pytest
+├── alembic.ini                            # Configuración Alembic (migraciones)
+├── docker-compose.yml                     # Docker setup completo
+├── Dockerfile
+│
+├── config/                                # ⭐ Configuraciones YAML
+│   ├── README.md
+│   ├── settings/
+│   │   ├── base.yaml
+│   │   ├── development.yaml
+│   │   ├── staging.yaml
+│   │   ├── production.yaml
+│   │   └── testing.yaml
+│   ├── llm/
+│   │   ├── claude_prompts.yaml
+│   │   ├── gemini_prompts.yaml
+│   │   └── validation_schemas.yaml
+│   ├── parser/
+│   │   ├── grammar_config.yaml
+│   │   └── token_definitions.yaml
+│   ├── patterns/
+│   │   ├── pattern_signatures.yaml
+│   │   └── scoring_weights.yaml
+│   ├── complexity/
+│   │   ├── notation_rules.yaml
+│   │   └── recurrence_templates.yaml
+│   ├── export/
+│   │   ├── pdf_templates.yaml
+│   │   └── report_layouts.yaml
+│   └── logging/
+│       ├── handlers.yaml
+│       └── formatters.yaml
+│
+├── notebooks/                             # ⭐ Jupyter Notebooks
+│   ├── README.md
+│   ├── 01_exploratory/
+│   │   ├── parser_testing.ipynb
+│   │   ├── ast_visualization.ipynb
+│   │   └── grammar_experiments.ipynb
+│   ├── 02_complexity_analysis/
+│   │   ├── big_o_examples.ipynb
+│   │   ├── recurrence_solver.ipynb
+│   │   └── complexity_comparison.ipynb
+│   ├── 03_pattern_detection/
+│   │   ├── pattern_signatures.ipynb
+│   │   ├── scoring_calibration.ipynb
+│   │   └── pattern_evaluation.ipynb
+│   ├── 04_llm_integration/
+│   │   ├── claude_experiments.ipynb
+│   │   ├── gemini_experiments.ipynb
+│   │   ├── prompt_engineering.ipynb
+│   │   └── llm_comparison.ipynb
+│   ├── 05_visualization/
+│   │   ├── recursion_trees.ipynb
+│   │   ├── execution_graphs.ipynb
+│   │   └── diagram_generation.ipynb
+│   ├── 06_data_analysis/
+│   │   ├── performance_metrics.ipynb
+│   │   ├── accuracy_evaluation.ipynb
+│   │   └── error_analysis.ipynb
+│   ├── 07_dataset_generation/
+│   │   ├── synthetic_algorithms.ipynb
+│   │   ├── labeling_process.ipynb
+│   │   └── dataset_validation.ipynb
+│   └── 09_demos/
+│       ├── complete_analysis_demo.ipynb
+│       └── api_usage_examples.ipynb
+│
+├── docs/                                  # Documentación técnica
+│   ├── architecture.md                    # Arquitectura del sistema
+│   ├── grammar_specification.md           # Especificación gramática pseudocódigo
+│   ├── api_reference.md                   # Documentación API
+│   ├── complexity_analysis_guide.md       # Guía análisis de complejidad
+│   └── deployment.md                      # Guía de despliegue
+│
+├── scripts/                               # Scripts de utilidad
+│   ├── init_db.py                         # Inicialización base de datos
+│   ├── generate_test_data.py              # Generador de datos de prueba
+│   ├── run_migrations.py                  # Ejecutor de migraciones
+│   └── check_dependencies.py              # Verificador de dependencias
+│
+├── alembic/                               # Migraciones de base de datos
+│   ├── versions/
+│   │   └── 001_initial_schema.py
+│   ├── env.py
+│   └── script.py.mako
+│
+├── app/                                   # Aplicación principal
+│   ├── __init__.py
+│   ├── main.py                            # Entry point FastAPI
+│   │
+│   ├── api/                               # Capa de API
+│   │   ├── __init__.py
+│   │   ├── dependencies.py                # Dependency injection
+│   │   ├── middleware.py                  # Middlewares custom
+│   │   │
+│   │   └── v1/                            # API versión 1
+│   │       ├── __init__.py
+│   │       ├── router.py                  # Router principal v1
+│   │       │
+│   │       └── endpoints/                 # Endpoints
+│   │           ├── __init__.py
+│   │           ├── algorithms.py          # CRUD algoritmos
+│   │           ├── analysis.py            # Análisis de complejidad
+│   │           ├── validation.py          # Validación con LLMs
+│   │           ├── visualization.py       # Generación visualizaciones
+│   │           ├── export.py              # Exportación resultados
+│   │           └── health.py              # Health checks
+│   │
+│   ├── core/                              # Núcleo del dominio
+│   │   ├── __init__.py
+│   │   ├── config.py                      # Configuración aplicación
+│   │   ├── security.py                    # Seguridad y autenticación
+│   │   ├── exceptions.py                  # Excepciones personalizadas
+│   │   ├── constants.py                   # Constantes del sistema
+│   │   │
+│   │   ├── parser/                        # ⭐ MÓDULO 1: PARSING
+│   │   │   ├── __init__.py
+│   │   │   ├── grammar/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── pseudocode.lark        # Gramática Lark
+│   │   │   │   └── tokens.py              # Definición de tokens
+│   │   │   ├── lexer.py                   # Analizador léxico
+│   │   │   ├── ast_builder.py             # Constructor AST
+│   │   │   ├── ast_nodes.py               # Definición nodos AST
+│   │   │   ├── semantic_analyzer.py       # Análisis semántico
+│   │   │   ├── pseudocode_parser.py       # Parser principal
+│   │   │   └── validator.py               # Validador de sintaxis
+│   │   │
+│   │   ├── analyzer/                      # ⭐ MÓDULO 2: ANÁLISIS
+│   │   │   ├── __init__.py
+│   │   │   │
+│   │   │   ├── complexity/                # Análisis de complejidad
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── base_analyzer.py       # Clase base abstracta
+│   │   │   │   ├── big_o_analyzer.py      # Análisis Big O (peor caso)
+│   │   │   │   ├── omega_analyzer.py      # Análisis Omega (mejor caso)
+│   │   │   │   ├── theta_analyzer.py      # Análisis Theta (caso promedio)
+│   │   │   │   ├── tight_bounds.py        # Cálculo de cotas fuertes
+│   │   │   │   └── complexity_calculator.py # Orquestador principal
+│   │   │   │
+│   │   │   ├── line_by_line_analyzer.py   # Análisis línea por línea
+│   │   │   ├── execution_counter.py       # Contador de ejecuciones
+│   │   │   │
+│   │   │   ├── recurrence/                # Ecuaciones de recurrencia
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── recurrence_builder.py  # Constructor ecuaciones
+│   │   │   │   ├── recurrence_solver.py   # Solver (Master Theorem, etc)
+│   │   │   │   ├── temporal_complexity.py # T(n) - Tiempo
+│   │   │   │   └── spatial_complexity.py  # S(n) - Espacio
+│   │   │   │
+│   │   │   ├── space_analyzer.py          # Análisis complejidad espacial
+│   │   │   └── analyzer_engine.py         # Motor principal de análisis
+│   │   │
+│   │   ├── patterns/                      # ⭐ MÓDULO 3: DETECCIÓN PATRONES
+│   │   │   ├── __init__.py
+│   │   │   ├── base_pattern.py            # Interface patrón base
+│   │   │   ├── pattern_matcher.py         # Matcher genérico
+│   │   │   │
+│   │   │   ├── detectors/                 # Detectores específicos
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── recursive_detector.py  # Recursión
+│   │   │   │   ├── divide_conquer_detector.py # Divide y Vencerás
+│   │   │   │   ├── dynamic_programming_detector.py # DP
+│   │   │   │   ├── greedy_detector.py     # Algoritmos voraces
+│   │   │   │   ├── backtracking_detector.py # Backtracking
+│   │   │   │   ├── branch_bound_detector.py # Branch and Bound
+│   │   │   │   ├── sorting_detector.py    # Ordenamiento
+│   │   │   │   ├── searching_detector.py  # Búsqueda
+│   │   │   │   └── approximation_detector.py # Aproximados
+│   │   │   │
+│   │   │   ├── pattern_scorer.py          # Sistema de scoring
+│   │   │   └── pattern_detector.py        # Detector principal
+│   │   │
+│   │   └── visualization/                 # ⭐ MÓDULO 4: VISUALIZACIÓN
+│   │       ├── __init__.py
+│   │       ├── tree_builder.py            # Constructor árboles
+│   │       ├── recursion_tree_generator.py # Árboles recursión
+│   │       ├── execution_flow_generator.py # Flujo de ejecución
+│   │       ├── graph_generator.py         # Generador grafos
+│   │       └── diagram_renderer.py        # Renderizador diagramas
+│   │
+│   ├── services/                          # ⭐ MÓDULO 5: SERVICIOS
+│   │   ├── __init__.py
+│   │   ├── algorithm_service.py           # Gestión algoritmos
+│   │   ├── analysis_orchestrator.py       # Orquestación análisis completo
+│   │   ├── validation_service.py          # Validación con LLMs
+│   │   ├── export_service.py              # Exportación resultados
+│   │   └── cache_service.py               # Servicio de caché (Redis)
+│   │
+│   ├── infrastructure/                    # ⭐ MÓDULO 6: INFRAESTRUCTURA
+│   │   ├── __init__.py
+│   │   │
+│   │   ├── llm/                           # Integración LLMs
+│   │   │   ├── __init__.py
+│   │   │   ├── base_llm.py                # Interface base LLM
+│   │   │   ├── claude_adapter.py          # Anthropic Claude
+│   │   │   ├── gemini_adapter.py          # Google Gemini
+│   │   │   ├── llm_factory.py             # Factory pattern
+│   │   │   ├── prompt_templates.py        # Templates de prompts
+│   │   │   └── response_parser.py         # Parser respuestas LLM
+│   │   │
+│   │   ├── agents/                        # Sistema multiagente (OPCIONAL)
+│   │   │   ├── __init__.py
+│   │   │   ├── agent_graph.py             # LangGraph orchestration
+│   │   │   ├── parser_agent.py            # Agente parsing
+│   │   │   ├── complexity_agent.py        # Agente complejidad
+│   │   │   ├── pattern_agent.py           # Agente patrones
+│   │   │   ├── validation_agent.py        # Agente validación
+│   │   │   └── coordinator_agent.py       # Coordinador
+│   │   │
+│   │   ├── database/                      # Capa de datos
+│   │   │   ├── __init__.py
+│   │   │   ├── connection.py              # Conexión DB
+│   │   │   ├── mongodb_client.py          # Cliente MongoDB
+│   │   │   ├── postgresql_client.py       # Cliente PostgreSQL
+│   │   │   ├── database_factory.py        # Factory para DB
+│   │   │   │
+│   │   │   ├── models/                    # Modelos de datos
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── mongo/                 # ⭐ NUEVO: Modelos MongoDB
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   ├── algorithm.py       # Algoritmos (Beanie)
+│   │   │   │   │   ├── analysis_result.py # Resultados
+│   │   │   │   │   └── pattern_detection.py
+│   │   │   │   └── postgres/              # ⭐ NUEVO: Modelos PostgreSQL
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── user.py            # Usuarios (SQLAlchemy)
+│   │   │   │       ├── session.py         # Sesiones
+│   │   │   │       └── audit_log.py       # Logs de auditoría
+│   │   │   │
+│   │   │   └── repositories/              # Repositorios
+│   │   │       ├── __init__.py
+│   │   │       ├── base_repository.py     # Repo base
+│   │   │       ├── algorithm_repository.py # MongoDB
+│   │   │       ├── analysis_repository.py  # MongoDB
+│   │   │       ├── user_repository.py      # PostgreSQL
+│   │   │       ├── metrics_repository.py   # PostgreSQL
+│   │   │       └── cache_repository.py     # Redis repository
+│   │   │
+│   │   ├── cache/                         # Sistema de caché
+│   │   │   ├── __init__.py
+│   │   │   ├── redis_cache.py             # Implementación Redis
+│   │   │   └── cache_keys.py              # Claves de caché
+│   │   │
+│   │   └── export/                        # Exportadores
+│   │       ├── __init__.py
+│   │       ├── base_exporter.py           # Exporter base
+│   │       ├── pdf_exporter.py            # Exportador PDF
+│   │       ├── json_exporter.py           # Exportador JSON
+│   │       ├── markdown_exporter.py       # Exportador Markdown
+│   │       ├── excel_exporter.py          # Exportador Excel
+│   │       └── html_exporter.py           # Exportador HTML
+│   │       ├── csv_exporter.py            # Exportador CSV
+│   │       ├── dot_exporter.py            # Exportador DOT (Graphviz)
+│   │       ├── mermaid_exporter.py        # Exportador Mermaid
+│   │       └── svg_exporter.py            # Exportador SVG
+│   │
+│   ├── schemas/                           # Pydantic Schemas (DTOs)
+│   │   ├── __init__.py
+│   │   ├── algorithm.py                   # Schemas algoritmo
+│   │   ├── analysis_request.py            # Request de análisis
+│   │   ├── analysis_result.py             # Response de análisis
+│   │   ├── complexity.py                  # Schemas complejidad
+│   │   ├── pattern.py                     # Schemas patrón
+│   │   ├── validation.py                  # Schemas validación
+│   │   ├── export.py                      # Schemas exportación
+│   │   └── common.py                      # Schemas comunes
+│   │
+│   ├── utils/                             # Utilidades
+│   │   ├── __init__.py
+│   │   ├── logger.py                      # Sistema de logging
+│   │   ├── validators.py                  # Validadores custom
+│   │   ├── helpers.py                     # Funciones helper
+│   │   ├── math_utils.py                  # Utilidades matemáticas
+│   │   ├── file_utils.py                  # Utilidades archivos
+│   │   └── string_utils.py                # Utilidades strings
+│   │
+│   └── profiling/                         # ⭐ MÓDULO OPCIONAL: PROFILING
+│       ├── __init__.py
+│       ├── performance_monitor.py         # Monitor de performance
+│       ├── memory_profiler.py             # Profiler de memoria
+│       └── execution_timer.py             # Timer de ejecución
+│
+├── tests/                                 # ⭐ TESTING COMPLETO
+│   ├── __init__.py
+│   ├── conftest.py                        # Fixtures globales pytest
+│   │
+│   ├── unit/                              # Tests unitarios
+│   │   ├── __init__.py
+│   │   ├── test_parser.py
+│   │   ├── test_lexer.py
+│   │   ├── test_ast_builder.py
+│   │   ├── test_big_o_analyzer.py
+│   │   ├── test_omega_analyzer.py
+│   │   ├── test_theta_analyzer.py
+│   │   ├── test_recurrence_builder.py
+│   │   ├── test_pattern_detectors.py
+│   │   ├── test_visualization.py
+│   │   └── test_exporters.py
+│   │
+│   ├── integration/                       # Tests de integración
+│   │   ├── __init__.py
+│   │   ├── test_analysis_flow.py          # Flujo completo
+│   │   ├── test_llm_integration.py        # Integración LLMs
+│   │   ├── test_database_operations.py    # Operaciones DB
+│   │   ├── test_cache_operations.py       # Operaciones cache
+│   │   └── test_export_workflow.py        # Flujo exportación
+│   │
+│   ├── e2e/                               # Tests end-to-end
+│   │   ├── __init__.py
+│   │   └── test_complete_analysis.py      # Análisis completo
+│   │
+│   └── fixtures/                          # Datos de prueba
+│       ├── __init__.py
+│       ├── sample_algorithms/             # Algoritmos de prueba
+│       │   ├── sorting/
+│       │   │   ├── bubble_sort.txt
+│       │   │   ├── quick_sort.txt
+│       │   │   ├── merge_sort.txt
+│       │   │   └── heap_sort.txt
+│       │   ├── searching/
+│       │   │   ├── binary_search.txt
+│       │   │   ├── linear_search.txt
+│       │   │   └── interpolation_search.txt
+│       │   ├── recursion/
+│       │   │   ├── fibonacci.txt
+│       │   │   ├── factorial.txt
+│       │   │   ├── hanoi.txt
+│       │   │   └── ackermann.txt
+│       │   ├── dynamic_programming/
+│       │   │   ├── knapsack.txt
+│       │   │   ├── lcs.txt
+│       │   │   ├── edit_distance.txt
+│       │   │   └── coin_change.txt
+│       │   ├── divide_conquer/
+│       │   │   ├── strassen.txt
+│       │   │   ├── karatsuba.txt
+│       │   │   └── closest_pair.txt
+│       │   ├── greedy/
+│       │   │   ├── dijkstra.txt
+│       │   │   ├── prim.txt
+│       │   │   ├── kruskal.txt
+│       │   │   └── huffman.txt
+│       │   ├── backtracking/
+│       │   │   ├── n_queens.txt
+│       │   │   ├── sudoku.txt
+│       │   │   └── graph_coloring.txt
+│       │   └── graphs/
+│       │       ├── dfs.txt
+│       │       ├── bfs.txt
+│       │       ├── topological_sort.txt
+│       │       └── floyd_warshall.txt
+│       │
+│       └── expected_results/              # Resultados esperados
+│           ├── bubble_sort_result.json
+│           ├── quick_sort_result.json
+│           └── ...
+│
+├── logs/                                  # Logs de aplicación
+│   ├── app.log
+│   ├── errors.log
+│   └── performance.log
+│
+├── data/                                  # Datos persistentes
+│   ├── algorithms/                        # Algoritmos guardados (.txt)
+│   ├── exports/                           # Exportaciones generadas
+│   │   ├── pdf/
+│   │   ├── json/
+│   │   ├── markdown/
+│   │   └── excel/
+│   │   ├── html/
+│   │   ├── csv/                          
+│   │   ├── dot/                          
+│   │   ├── mermaid/                      
+│   │   ├── svg/                          
+│   │   └── images/                       
+│   └── cache/                             # Caché local (fallback Redis)
+│
+└── dataset_generator/                     # ⭐ OPCIONAL: GENERADOR DATASETS
+    ├── __init__.py
+    ├── algorithm_generator.py             # Generador de algoritmos
+    ├── complexity_labeler.py              # Etiquetador de complejidades
+    ├── synthetic_data_creator.py          # Creador datos sintéticos
+    └── dataset_exporter.py                # Exportador datasets ML
+```
+
+## Notas de Organización
+
+### Módulos Core (Implementación Obligatoria)
+1. **MÓDULO 1 - PARSING**: Parser de pseudocódigo + AST
+2. **MÓDULO 2 - ANÁLISIS**: Análisis de complejidad (O, Ω, Θ)
+3. **MÓDULO 3 - PATRONES**: Detección de patrones algorítmicos
+4. **MÓDULO 4 - VISUALIZACIÓN**: Generación de árboles y diagramas
+5. **MÓDULO 5 - SERVICIOS**: Orquestación y lógica de negocio
+6. **MÓDULO 6 - INFRAESTRUCTURA**: DB, LLMs, exportación
+
+### Módulos Opcionales (Bonus/Mejoras)
+- **Sistema Multiagente** (LangGraph): `infrastructure/agents/`
+- **Profiling**: `app/profiling/`
+- **Generador de Datasets**: `dataset_generator/`
+
+### Bases de Datos
+- **MongoDB**: Almacenamiento principal de algoritmos y análisis (flexible schema)
+- **PostgreSQL**: Alternativa para datos relacionales (opcional, usar una u otra)
+- **Redis**: Caché de resultados de análisis (opcional pero recomendado)
+
+### Orden de Implementación Recomendado
+1. Configuración inicial + estructura proyecto
+2. Parser (gramática + AST)
+3. Análisis de complejidad básico (loops simples)
+4. Detección de patrones básicos
+5. Integración LLMs (Claude + Gemini)
+6. Análisis avanzado (recursión, recurrencia)
+7. Visualización
+8. Exportación
+9. Testing completo
+10. Optimización + profiling
