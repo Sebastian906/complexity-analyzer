@@ -1,0 +1,79 @@
+# ============================================================================
+# .gitattributes - Analizador de Complejidades
+# ============================================================================
+# Configuración de atributos de Git para normalización de archivos
+
+# ============================================================================
+# Auto detect text files and perform LF normalization
+# ============================================================================
+* text=auto
+
+# ============================================================================
+# Source code
+# ============================================================================
+*.py text eol=lf diff=python
+*.pyi text eol=lf diff=python
+*.ipynb text eol=lf
+
+# ============================================================================
+# Scripts
+# ============================================================================
+*.sh text eol=lf
+*.bash text eol=lf
+
+# ============================================================================
+# Configuration files
+# ============================================================================
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+.env* text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# ============================================================================
+# Documentation
+# ============================================================================
+*.md text eol=lf diff=markdown
+*.txt text eol=lf
+*.rst text eol=lf
+LICENSE text eol=lf
+README* text eol=lf
+
+# ============================================================================
+# Docker
+# ============================================================================
+Dockerfile* text eol=lf
+*.dockerignore text eol=lf
+docker-compose*.yml text eol=lf
+
+# ============================================================================
+# Web files
+# ============================================================================
+*.html text eol=lf diff=html
+*.css text eol=lf
+*.js text eol=lf
+
+# ============================================================================
+# Binary files
+# ============================================================================
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.zip binary
+*.tar.gz binary
+
+# ============================================================================
+# Linguist - GitHub language detection
+# ============================================================================
+*.ipynb linguist-documentation
+notebooks/* linguist-documentation
+tests/fixtures/* linguist-vendored

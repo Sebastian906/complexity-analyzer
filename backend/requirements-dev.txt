@@ -1,5 +1,6 @@
 # ============================================================================
 # REQUIREMENTS-DEV.TXT - Dependencias de Desarrollo
+# Compatible con Python 3.14
 # ============================================================================
 # Instalar con: pip install -r requirements-dev.txt
 
@@ -9,63 +10,63 @@
 # ============================================================================
 # Jupyter y Notebooks
 # ============================================================================
-jupyter==1.0.0
-jupyterlab==4.0.11
-ipykernel==6.29.0
-nbconvert==7.14.2
-notebook==7.0.7
-jupytext==1.16.1                 # Sincronización .ipynb <-> .py
-ipywidgets==8.1.1                # Widgets interactivos
+jupyter>=1.1.0
+jupyterlab>=4.3.0
+ipykernel>=6.29.0
+nbconvert>=7.16.0
+notebook>=7.3.0
+jupytext>=1.16.0                 # Sincronización .ipynb <-> .py
+ipywidgets>=8.1.0                # Widgets interactivos
 
 # ============================================================================
 # Debugging
 # ============================================================================
-ipython==8.21.0                  # REPL mejorado
-ipdb==0.13.13                    # Debugger interactivo
-pdbpp==0.10.3                    # Debugger mejorado
+ipython>=8.31.0                  # REPL mejorado
+ipdb>=0.13.13                    # Debugger interactivo
+# pdbpp>=0.10.3                  # Comentado: no compatible con Python 3.14
 
 # ============================================================================
 # Testing Avanzado
 # ============================================================================
-pytest-xdist==3.5.0              # Ejecución paralela de tests
-pytest-timeout==2.2.0            # Timeout para tests
-pytest-sugar==1.0.0              # Output bonito
-pytest-clarity==1.0.1            # Mejores asserts
-hypothesis==6.98.3               # Property-based testing
-locust==2.20.1                   # Load testing
+pytest-xdist>=3.5.0              # Ejecución paralela de tests
+pytest-timeout>=2.3.0            # Timeout para tests
+pytest-sugar>=1.0.0              # Output bonito
+# pytest-clarity>=1.0.1          # Comentado: puede no ser compatible
+hypothesis>=6.125.0              # Property-based testing
+locust>=2.32.0                   # Load testing
 
 # ============================================================================
 # Code Coverage
 # ============================================================================
-coverage[toml]==7.4.1
+coverage[toml]>=7.6.0
 
 # ============================================================================
 # Linting y Formatting Avanzado
 # ============================================================================
-ruff==0.2.1                      # Linter ultra-rápido (alternativa a flake8)
-autopep8==2.0.4
-pre-commit==3.6.0                # Git hooks
+ruff>=0.8.0                      # Linter ultra-rápido (alternativa a flake8)
+autopep8>=2.3.0
+pre-commit>=4.0.0                # Git hooks
 
 # ============================================================================
 # Type Checking
 # ============================================================================
-pyright==1.1.349                 # Type checker alternativo
+pyright>=1.1.390                 # Type checker alternativo
 
 # ============================================================================
 # Documentación
 # ============================================================================
-sphinx==7.2.6                    # Generador documentación
-sphinx-rtd-theme==2.0.0
+sphinx>=8.1.0                    # Generador documentación
+sphinx-rtd-theme>=3.0.0
 
 # ============================================================================
 # Profiling Avanzado
 # ============================================================================
-line-profiler==4.1.2             # Line-by-line profiling
-scalene==1.5.38                  # CPU+GPU+Memory profiler
+# line-profiler>=4.1.2           # Comentado: no compatible con Python 3.14
+# scalene>=1.5.38                # Comentado: no compatible con Python 3.14
 
 # ============================================================================
 # Utilities
 # ============================================================================
-watchdog==3.0.0                  # File watching
-rich==13.7.0                     # Terminal output bonito
-typer==0.9.0                     # CLI applications
+watchdog>=6.0.0                  # File watching
+rich>=13.9.0                     # Terminal output bonito
+typer>=0.15.0                    # CLI applications
