@@ -1,0 +1,262 @@
+// ============================================================================
+// GRAMÁTICA LARK - PSEUDOCÓDIGO ESTILO PSEINT
+// ============================================================================
+// Basada en la sintaxis de PSeInt y especificación del proyecto
+// Compatible con estructuras: FOR, WHILE, REPEAT, IF, CALL, arrays, objetos
+
+// ============================================================================
+// PROGRAMA PRINCIPAL
+// ============================================================================
+
+?start: program
+
+program: class_definition* algorithm
+
+// ============================================================================
+// DEFINICIÓN DE CLASES (antes del algoritmo)
+// ============================================================================
+
+class_definition: CLASS_NAME "{" attribute_list "}"
+
+attribute_list: IDENTIFIER+
+
+// ============================================================================
+// DEFINICIÓN DE ALGORITMO
+// ============================================================================
+
+algorithm: ALGORITHM_KW IDENTIFIER "(" parameter_list? ")" block
+
+parameter_list: parameter ("," parameter)*
+
+parameter: array_parameter
+         | object_parameter  
+         | IDENTIFIER
+
+array_parameter: IDENTIFIER "[" (NUMBER | IDENTIFIER)? "]" ("[" (NUMBER | IDENTIFIER)? "]")*
+
+object_parameter: CLASS_NAME IDENTIFIER
+
+// ============================================================================
+// BLOQUE DE CÓDIGO
+// ============================================================================
+
+block: BEGIN statement_list END
+
+statement_list: (statement)*
+
+statement: variable_declaration
+         | assignment
+         | for_loop
+         | while_loop
+         | repeat_loop
+         | if_statement
+         | call_statement
+         | return_statement
+
+// ============================================================================
+// DECLARACIÓN DE VARIABLES LOCALES
+// ============================================================================
+
+variable_declaration: LOCAL_ARRAY_DECL
+                    | LOCAL_OBJECT_DECL
+
+LOCAL_ARRAY_DECL: IDENTIFIER "[" NUMBER "]"
+
+LOCAL_OBJECT_DECL: CLASS_NAME IDENTIFIER
+
+// ============================================================================
+// ASIGNACIÓN
+// ============================================================================
+
+assignment: lvalue ASSIGN expression
+
+lvalue: IDENTIFIER                           // variable simple
+      | IDENTIFIER "[" expression "]"        // array access
+      | IDENTIFIER "[" expression "]" "[" expression "]"  // 2D array
+      | IDENTIFIER "." IDENTIFIER            // object field
+
+// ============================================================================
+// ESTRUCTURAS DE CONTROL - CICLOS
+// ============================================================================
+
+// FOR loop: for i ← 1 to n do ... end
+for_loop: FOR IDENTIFIER ASSIGN expression TO expression DO block
+
+// WHILE loop: while (condition) do ... end  
+while_loop: WHILE "(" condition ")" DO block
+
+// REPEAT loop: repeat ... until (condition)
+repeat_loop: REPEAT statement_list UNTIL "(" condition ")"
+
+// ============================================================================
+// ESTRUCTURA CONDICIONAL
+// ============================================================================
+
+if_statement: IF "(" condition ")" THEN block (ELSE block)?
+
+// ============================================================================
+// LLAMADAS Y RETORNO
+// ============================================================================
+
+call_statement: CALL IDENTIFIER "(" argument_list? ")"
+
+argument_list: argument ("," argument)*
+
+argument: expression                                    // incluye arrays via atom
+        | IDENTIFIER "[" expression ":" expression "]"  // A[1..j] - slice notation
+
+return_statement: RETURN expression?
+
+// ============================================================================
+// EXPRESIONES
+// ============================================================================
+
+?expression: logical_or
+
+?logical_or: logical_and
+           | logical_or OR logical_and
+
+?logical_and: logical_not
+            | logical_and AND logical_not
+
+?logical_not: comparison
+            | NOT logical_not
+
+?comparison: arithmetic
+           | arithmetic compare_op arithmetic
+
+compare_op: LT | GT | LE | GE | EQ | NE
+
+?arithmetic: term
+           | arithmetic ADD term
+           | arithmetic SUB term
+
+?term: factor
+     | term MUL factor
+     | term DIVIDE factor
+     | term MOD factor
+     | term DIV factor
+
+?factor: power
+       | ADD factor
+       | SUB factor
+
+?power: atom
+      | atom POW factor
+
+// Operadores aritméticos como terminales
+ADD: "+"
+SUB: "-"
+MUL: "*"
+DIVIDE: "/"
+POW: "^"
+// Operadores de comparación como terminales explícitos
+LT: "<"
+GT: ">"
+LE: "<=" | "≤"
+GE: ">=" | "≥"
+EQ: "="
+NE: "!=" | "≠"
+?atom: NUMBER
+     | BOOLEAN
+     | STRING
+     | IDENTIFIER
+     | IDENTIFIER "[" expression "]"                    // array access
+     | IDENTIFIER "[" expression "]" "[" expression "]" // 2D array
+     | IDENTIFIER "." IDENTIFIER                         // object field
+     | function_call
+     | "(" expression ")"
+     | CEIL "(" expression ")"                          // ⌈x⌉
+     | FLOOR "(" expression ")"                         // ⌊x⌋
+     | LENGTH "(" IDENTIFIER ")"                        // length(A)
+
+function_call: IDENTIFIER "(" (expression ("," expression)*)? ")"
+
+// ============================================================================
+// CONDICIONES (usado en IF, WHILE, REPEAT)
+// ============================================================================
+
+?condition: logical_or
+
+// ============================================================================
+// TERMINALES - PALABRAS CLAVE
+// ============================================================================
+
+// Palabras clave principales - prioridad alta (.2) para tener precedencia sobre IDENTIFIER
+ALGORITHM_KW.2: "algorithm"i | "algoritmo"i | "proceso"i | "subproceso"i | "funcion"i | "función"i
+BEGIN.2: "begin"i | "inicio"i
+END.2: "end"i | "fin"i | "finproceso"i | "finalgoritmo"i | "finfuncion"i | "finsubproceso"i
+
+// Ciclos
+FOR.2: "for"i | "para"i
+TO.2: "to"i | "hasta"i
+DO.2: "do"i | "hacer"i
+WHILE.2: "while"i | "mientras"i
+REPEAT.2: "repeat"i | "repetir"i
+UNTIL.2: "until"i | "hasta que"i | "hastaque"i
+
+// Condicionales
+IF.2: "if"i | "si"i
+THEN.2: "then"i | "entonces"i
+ELSE.2: "else"i | "sino"i
+
+// Llamadas y retorno
+CALL.2: "call"i | "llamar"i
+RETURN.2: "return"i | "retornar"i | "devolver"i
+
+// Operadores lógicos
+AND.2: "and"i | "y"i | "&&"
+OR.2: "or"i | "o"i | "||"
+NOT.2: "not"i | "no"i | "!"
+
+// Operadores matemáticos
+MOD.2: "mod"i | "módulo"i | "%"
+DIV.2: "div"i
+
+// Funciones especiales
+CEIL.2: "⌈" | "ceil"i | "techo"i
+FLOOR.2: "⌊" | "floor"i | "piso"i
+LENGTH.2: "length"i | "longitud"i | "tamaño"i
+
+// ============================================================================
+// TERMINALES - OPERADORES Y SÍMBOLOS
+// ============================================================================
+
+// ASSIGN solo usa ← y :=, NO = para evitar ambigüedad con comparación
+ASSIGN: "←" | ":="
+
+// ============================================================================
+// TERMINALES - LITERALES
+// ============================================================================
+
+// BOOLEAN necesita word boundaries para no capturar partes de identificadores
+// Usamos regex con alternancia para palabras completas
+BOOLEAN.2: /\b(TRUE|VERDADERO|FALSE|FALSO)\b/i
+
+NUMBER: /\d+(\.\d+)?/
+      | /\d+e[+-]?\d+/i       // notación científica
+
+STRING: /"[^"]*"/
+      | /'[^']*'/
+
+// ============================================================================
+// TERMINALES - IDENTIFICADORES
+// ============================================================================
+
+// Prioridad baja (.1) para que las palabras clave tengan precedencia
+IDENTIFIER.1: /[a-zA-Z_áéíóúÁÉÍÓÚñÑ][a-zA-Z0-9_áéíóúÁÉÍÓÚñÑ]*/
+
+CLASS_NAME.1: /[A-Z][a-zA-Z0-9_]*/
+
+// ============================================================================
+// COMENTARIOS Y ESPACIOS
+// ============================================================================
+
+COMMENT: /►[^\n]*/
+       | /\/\/[^\n]*/
+
+NEWLINE: /[\r\n]+/
+
+%ignore /[ \t]+/              // Ignorar espacios y tabs
+%ignore COMMENT               // Ignorar comentarios en parsing
+%ignore NEWLINE               // Ignorar saltos de línea
