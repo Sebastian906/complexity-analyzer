@@ -48,20 +48,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         logger.info("Conectando a bases de datos...")
         
         if settings.DATABASE_TYPE == "mongodb":
-            from app.infrastructure.database.mongodb_client import get_mongodb_client
-            await get_mongodb_client().connect()
-            logger.info("MongoDB conectado")
+            try:
+                from app.infrastructure.database.mongodb_client import get_mongodb_client
+                await get_mongodb_client().connect()
+                logger.info("MongoDB conectado")
+            except ImportError:
+                logger.warning("MongoDB client no disponible - módulo no implementado")
         
         elif settings.DATABASE_TYPE == "postgresql":
-            from app.infrastructure.database.postgresql_client import get_postgresql_client
-            await get_postgresql_client().connect()
-            logger.info("PostgreSQL conectado")
+            try:
+                from app.infrastructure.database.postgresql_client import get_postgresql_client
+                await get_postgresql_client().connect()
+                logger.info("PostgreSQL conectado")
+            except ImportError:
+                logger.warning("PostgreSQL client no disponible - módulo no implementado")
         
         # Inicializar Redis (si está habilitado)
         if settings.REDIS_HOST:
-            from app.infrastructure.cache.redis_cache import get_redis_client
-            await get_redis_client().ping()
-            logger.info("Redis conectado")
+            try:
+                from app.infrastructure.cache.redis_cache import get_redis_client
+                await get_redis_client().ping()
+                logger.info("Redis conectado")
+            except ImportError:
+                logger.warning("Redis client no disponible - módulo no implementado")
         
         # Verificar APIs de LLMs
         if settings.ANTHROPIC_API_KEY:
@@ -83,20 +92,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     try:
         # Cerrar conexiones a bases de datos
         if settings.DATABASE_TYPE == "mongodb":
-            from app.infrastructure.database.mongodb_client import get_mongodb_client
-            await get_mongodb_client().close()
-            logger.info("MongoDB desconectado")
+            try:
+                from app.infrastructure.database.mongodb_client import get_mongodb_client
+                await get_mongodb_client().close()
+                logger.info("MongoDB desconectado")
+            except ImportError:
+                pass
         
         elif settings.DATABASE_TYPE == "postgresql":
-            from app.infrastructure.database.postgresql_client import get_postgresql_client
-            await get_postgresql_client().close()
-            logger.info("PostgreSQL desconectado")
+            try:
+                from app.infrastructure.database.postgresql_client import get_postgresql_client
+                await get_postgresql_client().close()
+                logger.info("PostgreSQL desconectado")
+            except ImportError:
+                pass
         
         # Cerrar Redis
         if settings.REDIS_HOST:
-            from app.infrastructure.cache.redis_cache import get_redis_client
-            await get_redis_client().close()
-            logger.info("Redis desconectado")
+            try:
+                from app.infrastructure.cache.redis_cache import get_redis_client
+                await get_redis_client().close()
+                logger.info("Redis desconectado")
+            except ImportError:
+                pass
         
         logger.info("Aplicación cerrada correctamente")
         
