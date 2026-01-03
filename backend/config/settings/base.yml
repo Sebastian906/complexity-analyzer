@@ -1,0 +1,34 @@
+application:
+  name: "Complexity Analyzer"
+  version: "1.0.0"
+  description: "Sistema de análisis de complejidad algorítmica con LLMs"
+
+parser:
+  max_lines: 1000
+  max_file_size_kb: 100
+  timeout_seconds: 10
+  enable_semantic_analysis: true
+
+analyzer:
+  timeout_seconds: 60
+  max_recursion_depth: 1000
+  enable_symbolic_solving: true
+  enable_tight_bounds: true
+
+visualization:
+  max_tree_depth: 10
+  max_tree_nodes: 100
+  default_engine: "dot"  # dot, neato, fdp, sfdp, circo, twopi
+
+export:
+  enabled_formats:
+    - pdf
+    - json
+    - markdown
+    - excel
+    - html
+    - csv
+    - dot
+    - mermaid
+    - svg
+  max_file_size_mb: 50
