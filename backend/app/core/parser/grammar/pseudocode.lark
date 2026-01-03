@@ -205,12 +205,14 @@ CALL.2: "call"i | "llamar"i
 RETURN.2: "return"i | "retornar"i | "devolver"i
 
 // Operadores lógicos
-AND.2: "and"i | "y"i | "&&"
-OR.2: "or"i | "o"i | "||"
+// NOTA: "y" y "o" removidos porque causan conflictos con identificadores de una letra
+AND.2: "and"i | "&&"
+OR.2: "or"i | "||"
 NOT.2: "not"i | "no"i | "!"
 
 // Operadores matemáticos
-MOD.2: "mod"i | "módulo"i | "%"
+// NOTA: "mod" puede conflictuar con identificadores que empiecen con "mod", usar con cuidado
+MOD.2: "%" | "módulo"i
 DIV.2: "div"i
 
 // Funciones especiales
