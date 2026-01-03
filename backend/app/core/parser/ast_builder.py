@@ -350,7 +350,8 @@ class ASTBuilder(Transformer):
 
     def return_statement(self, items: List[Any]) -> ReturnStatementNode:
         """Regla return_statement: RETURN expression?"""
-        value = items[0] if items else None
+        # items[0] es el token RETURN, items[1] (si existe) es la expresión
+        value = items[1] if len(items) > 1 else None
         return ReturnStatementNode(value=value)
 
     # Expresiones - Lógicas

@@ -8,6 +8,8 @@ Exports principales:
     - parse_pseudocode: Helper function para parsing rápido
     - AST nodes: Todos los nodos del AST
     - ASTBuilder: Constructor de AST desde parse tree
+    - SemanticAnalyzer: Analizador semántico del AST
+    - ASTValidator: Validador de AST
 
 Example:
     >>> from app.core.parser import parse_pseudocode
@@ -43,6 +45,8 @@ from app.core.parser.pseudocode_parser import (
     PseudocodeParser,
     parse_pseudocode,
 )
+from app.core.parser.semantic_analyzer import SemanticAnalyzer, VariableInfo, FunctionInfo
+from app.core.parser.validator import ASTValidator, ValidationResult
 
 __all__ = [
     # Parser principal
@@ -75,4 +79,13 @@ __all__ = [
     "ArrayAccessNode",
     "ObjectAccessNode",
     "FunctionCallNode",
+    
+    # Análisis semántico
+    "SemanticAnalyzer",
+    "VariableInfo",
+    "FunctionInfo",
+    
+    # Validación
+    "ASTValidator",
+    "ValidationResult",
 ]
