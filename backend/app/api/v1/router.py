@@ -7,6 +7,7 @@ Registra todos los endpoints de la API versión 1.
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import analysis
+from app.api.v1.endpoints import patterns
 
 # Router principal
 api_router = APIRouter()
@@ -28,4 +29,10 @@ api_router.include_router(
     analysis.router,
     prefix="/analysis",
     tags=["Analysis"]
+)
+
+api_router.include_router(
+    patterns.router,
+    prefix="/patterns",
+    tags=["Patterns"]
 )

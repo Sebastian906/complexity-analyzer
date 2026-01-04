@@ -31,8 +31,8 @@ class TestAnalysisEndpoints:
         assert "algorithm_name" in data
         assert "message" in data
     
-    def test_analyze_placeholder_message(self, client, simple_algorithm):
-        """Test: Endpoint de análisis retorna mensaje de placeholder"""
+    def test_analyze_complete_success(self, client, simple_algorithm):
+        """Test: Endpoint de análisis retorna análisis completo exitoso"""
         response = client.post(
             "/api/v1/analysis/analyze",
             json={
@@ -45,9 +45,9 @@ class TestAnalysisEndpoints:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        # Por ahora debe retornar un placeholder
-        assert data["success"] is False
-        assert "MÓDULO 2" in data["message"]
+        # Verificar análisis exitoso
+        assert data["success"] is True
+        assert "completado" in data["message"].lower() or "exitosamente" in data["message"].lower()
     
     def test_analyze_with_only_temporal(self, client, simple_algorithm):
         """Test: Análisis solo temporal"""
@@ -89,13 +89,25 @@ class TestAnalysisEndpoints:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         
-        # Verificar campos esperados
+        # Verificar campos principales
         assert "success" in data
         assert "algorithm_name" in data
-        assert "big_o" in data
-        assert "omega" in data
-        assert "theta" in data
         assert "message" in data
+        
+        # Verificar estructura de complejidad temporal
+        assert "temporal_complexity" in data
+        assert "big_o" in data["temporal_complexity"]
+        assert "omega" in data["temporal_complexity"]
+        assert "theta" in data["temporal_complexity"]
+        
+        # Verificar estructura de complejidad espacial
+        assert "spatial_complexity" in data
+        assert "total" in data["spatial_complexity"]
+        
+        # Verificar otros campos importantes
+        assert "line_by_line" in data
+        assert "metadata" in data
+        assert "summary" in data
     
     def test_analyze_missing_code(self, client):
         """Test: Error al no enviar código"""
