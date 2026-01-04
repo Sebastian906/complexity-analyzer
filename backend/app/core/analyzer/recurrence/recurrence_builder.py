@@ -162,6 +162,16 @@ class RecurrenceBuilder:
                         statement.arguments
                     ))
             
+            elif isinstance(statement, ReturnStatementNode):
+                # Buscar llamadas recursivas en la expresión de retorno
+                if statement.value:
+                    self._analyze_expression_for_recursion(statement.value, algorithm_name)
+            
+            elif isinstance(statement, AssignmentNode):
+                # Buscar llamadas recursivas en el lado derecho de asignaciones
+                if statement.value:
+                    self._analyze_expression_for_recursion(statement.value, algorithm_name)
+            
             elif isinstance(statement, ForLoopNode):
                 self._analyze_for_recursion(statement.body, algorithm_name)
                 # Trabajo fuera de recursión
@@ -182,6 +192,26 @@ class RecurrenceBuilder:
                 self._analyze_for_recursion(statement.then_block, algorithm_name)
                 if statement.else_block:
                     self._analyze_for_recursion(statement.else_block, algorithm_name)
+    
+    def _analyze_expression_for_recursion(self, expr, algorithm_name: str):
+        """Analiza una expresión buscando llamadas recursivas"""
+        if isinstance(expr, FunctionCallNode):
+            if expr.function_name == algorithm_name:
+                self.is_recursive = True
+                self.recursive_calls.append((
+                    expr.function_name,
+                    expr.arguments
+                ))
+            # También analizar los argumentos
+            for arg in expr.arguments:
+                self._analyze_expression_for_recursion(arg, algorithm_name)
+        
+        elif isinstance(expr, BinaryOpNode):
+            self._analyze_expression_for_recursion(expr.left, algorithm_name)
+            self._analyze_expression_for_recursion(expr.right, algorithm_name)
+        
+        elif isinstance(expr, UnaryOpNode):
+            self._analyze_expression_for_recursion(expr.operand, algorithm_name)
     
     def _determine_recursion_pattern(self) -> str:
         """Determina el patrón de recursión"""
