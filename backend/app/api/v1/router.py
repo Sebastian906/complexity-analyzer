@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import analysis
 from app.api.v1.endpoints import patterns
+from app.api.v1.endpoints import structures
 
 # Router principal
 api_router = APIRouter()
@@ -35,4 +36,10 @@ api_router.include_router(
     patterns.router,
     prefix="/patterns",
     tags=["Patterns"]
+)
+
+api_router.include_router(
+    structures.router,
+    prefix="/structures",
+    tags=["Data Structures"]
 )
