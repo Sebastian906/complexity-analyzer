@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import analysis
 from app.api.v1.endpoints import patterns
 from app.api.v1.endpoints import structures
+from app.api.v1.endpoints import visualization
 
 # Router principal
 api_router = APIRouter()
@@ -42,4 +43,10 @@ api_router.include_router(
     structures.router,
     prefix="/structures",
     tags=["Data Structures"]
+)
+
+api_router.include_router(
+    visualization.router,
+    prefix="/visualization",
+    tags=["Visualization"]
 )
