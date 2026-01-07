@@ -14,7 +14,7 @@ from loguru import logger
 from app.core.config import settings
 
 
-def setup_logger(name: Optional[str] = None) -> logger:
+def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
     """
     Configura el sistema de logging de la aplicación.
     
@@ -280,3 +280,26 @@ class LoggerContextManager:
 
 # Crear instancia global del logger
 app_logger = setup_logger("complexity_analyzer")
+
+
+def get_logger(name: Optional[str] = None) -> logger: # type: ignore
+    """
+    Obtiene un logger configurado para el módulo especificado.
+    
+    Esta función es un alias conveniente que retorna un logger
+    con binding al nombre del módulo proporcionado.
+    
+    Args:
+        name: Nombre del módulo (generalmente __name__)
+    
+    Returns:
+        logger: Instancia de Loguru con contexto del módulo
+    
+    Example:
+        >>> from app.utils.logger import get_logger
+        >>> logger = get_logger(__name__)
+        >>> logger.info("Mensaje de log")
+    """
+    if name:
+        return logger.bind(module=name)
+    return logger

@@ -9,6 +9,9 @@ Capacidades:
 - Grafos de estructuras de datos
 - Diagramas de flujo de ejecución
 - Renderizado en múltiples formatos (SVG, PNG, DOT, Mermaid)
+- Exportación batch con múltiples modos de procesamiento
+- Optimización para grafos grandes
+- Métricas y monitoring con alertas
 
 Exports principales:
     - RecursionTreeGenerator: Generador de árboles de recursión
@@ -16,6 +19,9 @@ Exports principales:
     - ExecutionFlowGenerator: Generador de flujos de ejecución
     - DiagramRenderer: Renderizador unificado
     - TreeBuilder: Constructor de árboles genéricos
+    - BatchExporter: Exportación masiva de visualizaciones
+    - VisualizationOptimizer: Optimizador para grafos grandes
+    - MetricsCollector: Recolector de métricas y alertas
 """
 
 from app.core.visualization.tree_builder import (
@@ -60,6 +66,34 @@ from app.core.visualization.diagram_renderer import (
     render_diagram
 )
 
+from app.core.visualization.batch_exporter import (
+    BatchExporter,
+    BatchExportConfig,
+    ExportTask,
+    ExportResult,
+    ExportFormat,
+    ProcessingMode
+)
+
+from app.core.visualization.optimizer import (
+    VisualizationOptimizer,
+    OptimizationConfig,
+    OptimizationLevel,
+    GraphMetrics
+)
+
+from app.core.visualization.metrics_collector import (
+    MetricsCollector,
+    MetricsContext,
+    ExportMetrics,
+    BatchMetrics,
+    Alert,
+    AlertThresholds,
+    AlertSeverity,
+    MetricType,
+    track_export
+)
+
 __all__ = [
     # Tree Builder
     "TreeBuilder",
@@ -97,4 +131,29 @@ __all__ = [
     "RenderOptions",
     "RenderResult",
     "render_diagram",
+    
+    # Batch Export
+    "BatchExporter",
+    "BatchExportConfig",
+    "ExportTask",
+    "ExportResult",
+    "ExportFormat",
+    "ProcessingMode",
+    
+    # Optimization
+    "VisualizationOptimizer",
+    "OptimizationConfig",
+    "OptimizationLevel",
+    "GraphMetrics",
+    
+    # Metrics & Monitoring
+    "MetricsCollector",
+    "MetricsContext",
+    "ExportMetrics",
+    "BatchMetrics",
+    "Alert",
+    "AlertThresholds",
+    "AlertSeverity",
+    "MetricType",
+    "track_export",
 ]
