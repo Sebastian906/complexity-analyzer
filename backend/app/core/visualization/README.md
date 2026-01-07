@@ -492,6 +492,187 @@ except Exception:
     graph = generate_graph(structure_type="tree", layout=LayoutType.HIERARCHICAL)
 ```
 
+## Exportación Batch
+
+### BatchExporter
+
+Permite exportar múltiples visualizaciones de forma eficiente.
+
+```python
+from app.core.visualization import (
+    BatchExporter,
+    BatchExportConfig,
+    ExportTask,
+    ExportFormat,
+    ProcessingMode
+)
+from pathlib import Path
+
+# Configuración
+config = BatchExportConfig(
+    mode=ProcessingMode.THREADED,  # sequential, threaded, async, multiprocess
+    max_workers=4,
+    chunk_size=10,
+    timeout_per_task=30.0,
+    retry_failed=True,
+    max_retries=3
+)
+
+exporter = BatchExporter(config)
+
+# Crear tareas
+tasks = [
+    ExportTask(
+        id="fib-tree",
+        visualization_type="recursion_tree",
+        data={"recurrence": "T(n) = T(n-1) + T(n-2) + 1"},
+        format=ExportFormat.SVG,
+        output_path=Path("output/fib.svg"),
+        priority=1
+    ),
+    ExportTask(
+        id="sort-flow",
+        visualization_type="execution_flow",
+        data={"ast_node": ast},
+        format=ExportFormat.PNG,
+        output_path=Path("output/sort.png")
+    )
+]
+
+# Exportar batch
+import asyncio
+results = asyncio.run(exporter.export_batch(tasks))
+
+# Estadísticas
+stats = exporter.get_stats()
+print(f"Éxitos: {stats['successful']}/{stats['total_tasks']}")
+```
+
+## Optimización
+
+### VisualizationOptimizer
+
+Optimiza grafos grandes para mejorar rendimiento y legibilidad.
+
+```python
+from app.core.visualization import (
+    VisualizationOptimizer,
+    OptimizationConfig,
+    OptimizationLevel
+)
+
+# Configuración
+config = OptimizationConfig(
+    level=OptimizationLevel.MODERATE,  # none, basic, moderate, aggressive
+    max_nodes=1000,
+    max_edges=5000,
+    enable_clustering=True,
+    enable_simplification=True,
+    edge_bundling=True,
+    node_aggregation=True
+)
+
+optimizer = VisualizationOptimizer(config)
+
+# Optimizar grafo
+nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(500)]
+edges = [(f"n{i}", f"n{i+1}", {}) for i in range(499)]
+
+opt_nodes, opt_edges, metadata = optimizer.optimize_graph(nodes, edges)
+
+print(f"Nodos: {len(nodes)} → {len(opt_nodes)}")
+print(f"Reducción: {metadata['reduction_ratio']['nodes']*100:.1f}%")
+print(f"Optimizaciones: {metadata['optimizations_applied']}")
+```
+
+### Niveles de Optimización
+
+| Nivel | Técnicas | Uso |
+|-------|----------|-----|
+| **NONE** | Ninguna | Debug/testing |
+| **BASIC** | Duplicados, aislados | Grafos pequeños |
+| **MODERATE** | + Clustering, LOD | Grafos medianos |
+| **AGGRESSIVE** | + Agregación, bundling | Grafos grandes |
+
+## Métricas y Monitoring
+
+### MetricsCollector
+
+Sistema de métricas y alertas para exportaciones.
+
+```python
+from app.core.visualization import (
+    MetricsCollector,
+    MetricsContext,
+    AlertThresholds,
+    AlertSeverity
+)
+
+# Configurar umbrales
+thresholds = AlertThresholds(
+    export_time_warning_ms=5000,
+    export_time_critical_ms=30000,
+    memory_warning_mb=256,
+    memory_critical_mb=512,
+    node_count_warning=5000,
+    node_count_critical=10000
+)
+
+# Callback para alertas
+def on_alert(alert):
+    if alert.severity == AlertSeverity.CRITICAL:
+        print(f"🚨 CRÍTICO: {alert.message}")
+
+collector = MetricsCollector(
+    thresholds=thresholds,
+    alert_callback=on_alert
+)
+
+# Iniciar batch
+collector.start_batch("my-batch", total_tasks=10)
+
+# Tracking con context manager
+with MetricsContext(
+    collector,
+    task_id="export-001",
+    visualization_type="graph",
+    export_format="svg",
+    node_count=500,
+    edge_count=800
+) as metrics:
+    # Tu código de exportación aquí
+    pass
+
+# Finalizar y obtener resultados
+batch = collector.end_batch()
+print(f"Throughput: {batch.throughput_tasks_per_sec:.2f}/s")
+print(f"Alertas: {len(batch.alerts_triggered)}")
+
+# Exportar reporte
+from pathlib import Path
+collector.export_report(Path("reports/metrics.json"))
+```
+
+### Tipos de Alertas
+
+| Tipo | Descripción | Severidades |
+|------|-------------|-------------|
+| **Tiempo** | Exportación lenta | Warning/Critical |
+| **Memoria** | Alto uso de RAM | Warning/Critical |
+| **Tamaño** | Grafo muy grande | Warning/Critical |
+| **Archivos** | Archivos grandes | Warning/Critical |
+| **Fallos** | Tasa de errores | Warning/Critical |
+
+### Estadísticas
+
+```python
+stats = collector.get_statistics()
+
+print(f"Total exportaciones: {stats['total_exports']}")
+print(f"Tiempo promedio: {stats['processing_time']['avg_ms']}ms")
+print(f"Alertas críticas: {stats['alerts']['critical']}")
+```
+
 ## Mejores Prácticas
 
 1. **Usar límites apropiados**: No generar árboles demasiado grandes
@@ -499,6 +680,9 @@ except Exception:
 3. **Cachear resultados**: Guardar visualizaciones generadas
 4. **Manejar errores**: Try-catch para operaciones de I/O
 5. **Documentar**: Agregar metadatos a las visualizaciones
+6. **Optimizar**: Usar VisualizationOptimizer para grafos grandes
+7. **Monitorear**: Usar MetricsCollector para tracking y alertas
+8. **Batch processing**: Usar BatchExporter para exportaciones múltiples
 
 ## Contribuir
 
