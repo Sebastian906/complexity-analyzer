@@ -12,6 +12,10 @@ from app.core.analyzer.execution_counter import (
     LineExecution, 
     count_executions
 )
+from app.core.analyzer.analyzer_engine import (
+    AnalyzerEngine,
+    AnalysisResult
+)
 
 __all__ = [
     "LineByLineAnalyzer",
@@ -20,4 +24,6 @@ __all__ = [
     "ExecutionCounter",
     "LineExecution",
     "count_executions",
+    "AnalyzerEngine",
+    "AnalysisResult",
 ]

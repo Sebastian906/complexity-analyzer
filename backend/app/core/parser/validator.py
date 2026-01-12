@@ -9,8 +9,8 @@ Valida restricciones estructurales del AST:
 
 """
 
-from typing import List, Optional
-from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
+from dataclasses import dataclass, field
 
 from app.core.parser.ast_nodes import (
     ASTNode, ProgramNode, AlgorithmNode, BlockNode,
@@ -28,6 +28,7 @@ class ValidationResult:
     is_valid: bool
     errors: List[str]
     warnings: List[str]
+    statistics: Dict[str, Any] = field(default_factory=dict)
 
     def __bool__(self):
         return self.is_valid
@@ -234,7 +235,13 @@ class ASTValidator:
         return ValidationResult(
             is_valid=(len(self.errors) == 0),
             errors=self.errors.copy(),
-            warnings=self.warnings.copy()
+            warnings=self.warnings.copy(),
+            statistics={
+                "total_nodes": self.total_nodes,
+                "max_depth": self.max_depth_found,
+                "errors_count": len(self.errors),
+                "warnings_count": len(self.warnings)
+            }
         )
 
     def get_stats(self) -> dict:
