@@ -10,6 +10,7 @@ from app.api.v1.endpoints import analysis
 from app.api.v1.endpoints import patterns
 from app.api.v1.endpoints import structures
 from app.api.v1.endpoints import visualization
+from app.api.v1.endpoints import services
 
 # Router principal
 api_router = APIRouter()
@@ -49,4 +50,10 @@ api_router.include_router(
     visualization.router,
     prefix="/visualization",
     tags=["Visualization"]
+)
+
+api_router.include_router(
+    services.router,
+    prefix="/services",
+    tags=["Services"]
 )
