@@ -10,6 +10,7 @@ from app.api.v1.endpoints import patterns
 from app.api.v1.endpoints import structures
 from app.api.v1.endpoints import visualization
 from app.api.v1.endpoints import services
+from app.api.v1.endpoints import export
 
 __all__ = [
     "analysis",
@@ -17,4 +18,5 @@ __all__ = [
     "structures",
     "visualization",
     "services",
+    "export",
 ]

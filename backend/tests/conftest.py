@@ -12,7 +12,26 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.config import settings
+
 from app.core.parser import PseudocodeParser
+
+# --- FIXTURE PARA INICIALIZAR BEANIE Y MONGODB ---
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
+from app.infrastructure.database.models.mongo.algorithm import Algorithm
+from app.infrastructure.database.models.mongo.analysis_result import AnalysisResult
+from app.infrastructure.database.models.mongo.pattern_detection import PatternDetection
+
+# Inicializa la conexión a MongoDB y Beanie antes de los tests
+@pytest.fixture(scope="session", autouse=True)
+async def init_mongodb():
+    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    db = client[settings.MONGODB_DB_NAME]
+    await init_beanie(
+        database=db,
+        document_models=[Algorithm, AnalysisResult, PatternDetection]
+    )
+
 
 # Fixtures de Cliente API
 
