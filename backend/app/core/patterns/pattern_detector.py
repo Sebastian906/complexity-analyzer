@@ -85,7 +85,13 @@ class PatternDetector:
             DivideConquerDetector(),
             DynamicProgrammingDetector(),
             GreedyDetector(),
-            # Se agregarán más detectores aquí
+            BacktrackingDetector(),
+            BranchBoundDetector(),
+            SortingDetector(),
+            SearchingDetector(),
+            QuantumAlgorithmsDetector(),
+            BioInspiredDetector(),
+            ApproximationDetector(),
         ]
 
         # Sistema de scoring
@@ -130,8 +136,8 @@ class PatternDetector:
         # Generar resumen
         summary = self._generate_summary(primary, confident_patterns)
 
-        # Metadata
-        metadata = self._build_metadata(scored_patterns)
+        # Metadata con estructuras
+        metadata = self._build_metadata(scored_patterns, raw_patterns)
 
         return PatternDetectionResult(
             primary_pattern=primary,
@@ -183,15 +189,46 @@ class PatternDetector:
         """
         patterns = []
 
+        # Habilitar debug temporalmente
+        from rich.console import Console
+        debug_console = Console()
+        
+        debug_console.print("\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]")
+        debug_console.print("=" * 70)
+
         for detector in self.detectors:
             try:
                 match = detector.detect(ast)
-                patterns.append(match)
+                if match:
+                    patterns.append(match)
+                    # Debug: mostrar patrón detectado con detalles
+                    confidence = match.confidence
+                    indicators_found = len(match.indicators_found)
+                    total_indicators = match.total_indicators
+                    debug_console.print(
+                        f"[green]✓[/green] {detector.pattern_name:30s} | "
+                        f"Confianza: [green]{confidence:5.1%}[/green] | "
+                        f"Indicadores: {indicators_found}/{total_indicators}"
+                    )
+                else:
+                    # Debug: patrones no detectados
+                    debug_console.print(
+                        f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
+                    )
             except Exception as e:
-                # Log error pero continuar con otros detectores
-                print(f"Error en detector {detector.pattern_name}: {e}")
+                # Log error pero continuar
+                error_msg = str(e)[:50]
+                debug_console.print(
+                    f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
+                )
+                # Descomentar para ver traceback completo:
+                # import traceback
+                # traceback.print_exc()
                 continue
 
+        debug_console.print("=" * 70)
+        debug_console.print(f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n")
+        
         return patterns
 
     def _get_detector(
@@ -254,8 +291,31 @@ class PatternDetector:
 
         return " | ".join(summary_parts)
 
-    def _build_metadata(self, patterns: List[ScoredPattern]) -> Dict[str, Any]:
-        """Construye metadata del análisis"""
+    def _build_metadata(
+        self, 
+        patterns: List[ScoredPattern],
+        raw_patterns: List[PatternMatch]
+    ) -> Dict[str, Any]:
+        """
+        Construye metadata del análisis incluyendo estructuras detectadas
+        
+        Args:
+            patterns: Patrones con scoring
+            raw_patterns: Patrones originales con metadata
+        
+        Returns:
+            Diccionario con metadata completo
+        """
+        # Extraer estructuras de los raw_patterns
+        structures = []
+        for raw_match in raw_patterns:
+            if hasattr(raw_match, 'metadata') and isinstance(raw_match.metadata, dict):
+                # Buscar estructuras en metadata
+                if 'data_structures' in raw_match.metadata:
+                    structures.extend(raw_match.metadata['data_structures'])
+                if 'structures' in raw_match.metadata:
+                    structures.extend(raw_match.metadata['structures'])
+        
         return {
             "total_patterns_detected": len(patterns),
             "patterns_by_type": {
@@ -263,7 +323,9 @@ class PatternDetector:
                 for p in patterns
             },
             "highest_confidence": patterns[0].final_score if patterns else 0.0,
-            "detection_complete": True
+            "detection_complete": True,
+            "structures": structures,  # Agregar estructuras a metadata
+            "raw_pattern_count": len(raw_patterns)
         }
 
     def __repr__(self) -> str:
