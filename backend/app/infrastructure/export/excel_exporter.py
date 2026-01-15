@@ -283,7 +283,8 @@ class ExcelExporter(BaseExporter):
             confidence = pattern.get("confidence", 0)
             score = pattern.get("score", 0)
             evidence = pattern.get("evidence", [])
-            
+            if not isinstance(evidence, (list, tuple)):
+                evidence = [evidence]
             ws.cell(row=row_idx, column=1, value=name)
             ws.cell(row=row_idx, column=2, value=f"{confidence:.1%}")
             ws.cell(row=row_idx, column=3, value=f"{score:.4f}")
@@ -343,6 +344,9 @@ class ExcelExporter(BaseExporter):
     
     def _create_line_analysis_sheet(self, wb: Workbook, data: ExportData):
         """Crea hoja de análisis línea por línea"""
+        if not data.analysis.line_by_line:
+            return
+        
         ws = wb.create_sheet("Línea por Línea")
         
         # Encabezados
@@ -355,9 +359,20 @@ class ExcelExporter(BaseExporter):
         
         # Datos
         line_data = data.analysis.line_by_line
+        row_idx = 2
         
         if isinstance(line_data, dict):
-            for row_idx, (line_num, info) in enumerate(sorted(line_data.items()), 2):
+            # Ordenar por número de línea
+            sorted_items = sorted(
+                line_data.items(),
+                key=lambda x: int(x[0]) if isinstance(x[0], (int, str)) and str(x[0]).isdigit() else 0
+            )
+            
+            for line_num, info in sorted_items:
+                # Verificar que info sea un dict
+                if not isinstance(info, dict):
+                    continue
+                
                 code = info.get("code", "").strip()
                 complexity = info.get("complexity", "O(1)")
                 executions = info.get("executions", "1")
@@ -370,6 +385,28 @@ class ExcelExporter(BaseExporter):
                 # Formato
                 ws.cell(row=row_idx, column=2).font = Font(name='Courier New', size=9)
                 ws.cell(row=row_idx, column=3).font = Font(name='Courier New', bold=True)
+                
+                row_idx += 1
+        
+        elif isinstance(line_data, list):
+            for info in line_data:
+                if not isinstance(info, dict):
+                    continue
+                
+                line_num = info.get("line", row_idx - 1)
+                code = info.get("code", "").strip()
+                complexity = info.get("complexity", "O(1)")
+                executions = info.get("executions", "1")
+                
+                ws.cell(row=row_idx, column=1, value=str(line_num))
+                ws.cell(row=row_idx, column=2, value=code)
+                ws.cell(row=row_idx, column=3, value=complexity)
+                ws.cell(row=row_idx, column=4, value=str(executions))
+                
+                ws.cell(row=row_idx, column=2).font = Font(name='Courier New', size=9)
+                ws.cell(row=row_idx, column=3).font = Font(name='Courier New', bold=True)
+                
+                row_idx += 1
         
         # Ajustar anchos
         ws.column_dimensions['A'].width = 8

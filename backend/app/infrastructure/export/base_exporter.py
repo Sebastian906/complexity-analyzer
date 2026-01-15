@@ -22,13 +22,13 @@ logger = setup_logger(__name__)
 class ExportFormat(str, Enum):
     """Formatos de exportación disponibles"""
     JSON = "json"
-    MARKDOWN = "markdown"
+    MARKDOWN = "md"
     PDF = "pdf"
-    EXCEL = "excel"
+    EXCEL = "xlsx"
     HTML = "html"
     CSV = "csv"
     DOT = "dot"
-    MERMAID = "mermaid"
+    MERMAID = "mmd"
     SVG = "svg"
 
 @dataclass
@@ -218,23 +218,53 @@ class BaseExporter(ABC):
         
         return errors
     
-    def prepare_output_path(self, data: ExportData) -> Path:
+    def prepare_output_path(self, data: ExportData, suffix: str = "") -> Path:
         """
         Prepara la ruta de salida para el archivo exportado.
         
         Args:
             data: Datos a exportar
+            suffix: Sufijo adicional para el nombre (ej: "_summary", "_patterns")
             
         Returns:
             Path: Ruta de salida preparada
         """
+        # Obtener extensión del formato
+        extension = self.get_format().value
+        
+        # Mapeo de extensiones a carpetas
+        folder_mapping = {
+            "md": "markdown",
+            "mmd": "mermaid",
+            "xlsx": "excel",
+            # Otros formatos usan su extensión como nombre de carpeta
+        }
+        format_folder = folder_mapping.get(extension, extension)
+        
         if self.config.output_path:
             output_path = self.config.output_path
+            
+            # Asegurar que esté en la carpeta correcta del formato
+            if output_path.parent.name != format_folder:
+                # Reemplazar carpeta padre con la correcta
+                output_path = Path("data/exports") / format_folder / output_path.name
+            
+            # Si hay sufijo, modificar el nombre manteniendo la carpeta
+            if suffix:
+                stem = output_path.stem
+                output_path = output_path.parent / f"{stem}{suffix}.{extension}"
         else:
-            # Generar nombre automático
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{data.algorithm.name}_{timestamp}.{self.get_format().value}"
-            output_path = Path("data/exports") / self.get_format().value / filename
+            # Generar nombre automático sin timestamp
+            base_name = data.algorithm.name
+            
+            # Construir nombre de archivo
+            if suffix:
+                filename = f"{base_name}{suffix}.{extension}"
+            else:
+                filename = f"{base_name}.{extension}"
+            
+            # Crear ruta con subcarpeta del formato
+            output_path = Path("data/exports") / format_folder / filename
         
         # Crear directorios si no existen
         output_path.parent.mkdir(parents=True, exist_ok=True)

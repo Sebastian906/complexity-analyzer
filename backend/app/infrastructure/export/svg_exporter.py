@@ -84,14 +84,9 @@ class SVGExporter(BaseExporter):
             total_size = 0
             
             for name, svg_element in svg_files.items():
-                if self.config.output_path:
-                    base_path = self.prepare_output_path(data)
-                    output_path = base_path.parent / f"{base_path.stem}_{name}.svg"
-                else:
-                    output_path = self.prepare_output_path(data)
-                    output_path = output_path.parent / f"{data.algorithm.name}_{name}.svg"
+                suffix = f"_{name}" if name != "complexity" else ""
+                output_path = self.prepare_output_path(data, suffix=suffix)
                 
-                # Convertir ElementTree a string
                 svg_string = ET.tostring(svg_element, encoding='unicode', method='xml')
                 
                 file_size = self.save_to_file(svg_string, output_path)

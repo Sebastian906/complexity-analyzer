@@ -87,12 +87,8 @@ class MermaidExporter(BaseExporter):
             total_size = 0
             
             for name, content in mermaid_files.items():
-                if self.config.output_path:
-                    base_path = self.prepare_output_path(data)
-                    output_path = base_path.parent / f"{base_path.stem}_{name}.mmd"
-                else:
-                    output_path = self.prepare_output_path(data)
-                    output_path = output_path.parent / f"{data.algorithm.name}_{name}.mmd"
+                suffix = f"_{name}" if name != "complexity" else ""
+                output_path = self.prepare_output_path(data, suffix=suffix)
                 
                 file_size = self.save_to_file(content, output_path)
                 total_size += file_size

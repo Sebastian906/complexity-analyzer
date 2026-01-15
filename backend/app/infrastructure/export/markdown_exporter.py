@@ -242,9 +242,11 @@ class MarkdownExporter(BaseExporter):
                 score = pattern.get("score", 0)
                 
                 lines.append(f"- **{pattern_name}** (Confianza: {confidence:.2%}, Score: {score:.2f})")
-                
-                if pattern.get("evidence"):
-                    lines.append(f"  - Evidencia: {len(pattern['evidence'])} características detectadas")
+                evidence = pattern.get("evidence", [])
+                if not isinstance(evidence, (list, tuple)):
+                    evidence = [evidence]
+                if evidence:
+                    lines.append(f"  - Evidencia: {len(evidence)} características detectadas")
         
         # Estructuras de datos
         if data.patterns.structures_found:
@@ -270,25 +272,48 @@ class MarkdownExporter(BaseExporter):
         """Genera la sección de análisis línea por línea"""
         if not data.analysis.line_by_line:
             return ""
-        
+
         lines = [
             "## Análisis Línea por Línea",
             "",
             "| Línea | Código | Complejidad | Ejecuciones |",
             "|-------|--------|-------------|-------------|"
         ]
-        
+
         line_data = data.analysis.line_by_line
-        
-        # Dependiendo de la estructura de line_by_line
+
+        # CORRECCIÓN: Verificar el tipo de line_by_line
         if isinstance(line_data, dict):
-            for line_num, info in sorted(line_data.items()):
+            # Ordenar por número de línea
+            sorted_items = sorted(line_data.items(), key=lambda x: int(x[0]) if isinstance(x[0], (int, str)) and str(x[0]).isdigit() else 0)
+
+            for line_num, info in sorted_items:
+                # Verificar que info sea un dict
+                if not isinstance(info, dict):
+                    continue
+
                 code = info.get("code", "").strip()[:50]  # Limitar longitud
                 complexity = info.get("complexity", "O(1)")
                 executions = info.get("executions", "1")
-                
+
+                # Escapar caracteres especiales en markdown
+                code = code.replace("|", "\\|")
+
                 lines.append(f"| {line_num} | `{code}` | `{complexity}` | {executions} |")
-        
+        elif isinstance(line_data, list):
+            # Si es una lista, iterar directamente
+            for i, info in enumerate(line_data, 1):
+                if not isinstance(info, dict):
+                    continue
+
+                line_num = info.get("line", i)
+                code = info.get("code", "").strip()[:50]
+                complexity = info.get("complexity", "O(1)")
+                executions = info.get("executions", "1")
+
+                code = code.replace("|", "\\|")
+                lines.append(f"| {line_num} | `{code}` | `{complexity}` | {executions} |")
+
         return "\n".join(lines)
     
     def _generate_visualizations_section(self, data: ExportData) -> str:

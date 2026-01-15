@@ -32,87 +32,95 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
     
     # Remover handlers por defecto
     logger.remove()
-    
-    # Handler 1: Console Output (stdout)
-    logger.add(
-        sys.stdout,
-        format=settings.LOG_FORMAT,
-        level=settings.LOG_LEVEL,
-        colorize=True,
-        backtrace=True,
-        diagnose=True,
-    )
-    
-    # Handler 2: Archivo de Log General
-    logger.add(
-        settings.LOG_FILE_PATH,
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-            "{level: <8} | "
-            "{name}:{function}:{line} | "
-            "{message}"
-        ),
-        level="DEBUG",
-        rotation=settings.LOG_ROTATION,
-        retention=settings.LOG_RETENTION,
-        compression=settings.LOG_COMPRESSION,
-        backtrace=True,
-        diagnose=True,
-        enqueue=True,  # Thread-safe
-    )
-    
-    # Handler 3: Archivo de Errores (solo ERROR y CRITICAL)
-    error_log_path = settings.LOG_FILE_PATH.parent / "errors.log"
-    logger.add(
-        error_log_path,
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-            "{level: <8} | "
-            "{name}:{function}:{line} | "
-            "{message} | "
-            "{extra}"
-        ),
-        level="ERROR",
-        rotation="100 MB",
-        retention="90 days",
-        compression="zip",
-        backtrace=True,
-        diagnose=True,
-        enqueue=True,
-    )
-    
-    # Handler 4: Archivo de Performance (si está habilitado)
-    if settings.ENABLE_PROFILING:
-        performance_log_path = settings.LOG_FILE_PATH.parent / "performance.log"
+
+    # En modo desarrollo, solo log a consola para evitar conflictos de acceso concurrente a archivos
+    if settings.is_development:
         logger.add(
-            performance_log_path,
-            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {message}",
-            filter=lambda record: "performance" in record["extra"],
-            level="INFO",
-            rotation="50 MB",
-            retention="30 days",
-            compression="zip",
-            enqueue=True,
+            sys.stdout,
+            format=settings.LOG_FORMAT,
+            level=settings.LOG_LEVEL,
+            colorize=True,
+            backtrace=True,
+            diagnose=True,
         )
-    
-    # Handler 5: JSON Log para parseo externo (producción)
-    if settings.is_production:
-        json_log_path = settings.LOG_FILE_PATH.parent / "app.json.log"
+        # Nota: No se agregan handlers de archivo en desarrollo para evitar errores de acceso concurrente
+    else:
+        # Handler 1: Console Output (stdout)
         logger.add(
-            json_log_path,
-            format="{message}",
-            level="INFO",
+            sys.stdout,
+            format=settings.LOG_FORMAT,
+            level=settings.LOG_LEVEL,
+            colorize=True,
+            backtrace=True,
+            diagnose=True,
+        )
+        # Handler 2: Archivo de Log General
+        logger.add(
+            settings.LOG_FILE_PATH,
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                "{level: <8} | "
+                "{name}:{function}:{line} | "
+                "{message}"
+            ),
+            level="DEBUG",
+            rotation=settings.LOG_ROTATION,
+            retention=settings.LOG_RETENTION,
+            compression=settings.LOG_COMPRESSION,
+            backtrace=True,
+            diagnose=True,
+            enqueue=True,  # Thread-safe
+        )
+        # Handler 3: Archivo de Errores (solo ERROR y CRITICAL)
+        error_log_path = settings.LOG_FILE_PATH.parent / "errors.log"
+        logger.add(
+            error_log_path,
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                "{level: <8} | "
+                "{name}:{function}:{line} | "
+                "{message} | "
+                "{extra}"
+            ),
+            level="ERROR",
             rotation="100 MB",
-            retention="60 days",
+            retention="90 days",
             compression="zip",
-            serialize=True,  # Output en JSON
+            backtrace=True,
+            diagnose=True,
             enqueue=True,
         )
-    
+        # Handler 4: Archivo de Performance (si está habilitado)
+        if settings.ENABLE_PROFILING:
+            performance_log_path = settings.LOG_FILE_PATH.parent / "performance.log"
+            logger.add(
+                performance_log_path,
+                format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {message}",
+                filter=lambda record: "performance" in record["extra"],
+                level="INFO",
+                rotation="50 MB",
+                retention="30 days",
+                compression="zip",
+                enqueue=True,
+            )
+        # Handler 5: JSON Log para parseo externo (producción)
+        if settings.is_production:
+            json_log_path = settings.LOG_FILE_PATH.parent / "app.json.log"
+            logger.add(
+                json_log_path,
+                format="{message}",
+                level="INFO",
+                rotation="100 MB",
+                retention="60 days",
+                compression="zip",
+                serialize=True,  # Output en JSON
+                enqueue=True,
+            )
+
     # Bind contexto si se proporciona nombre
     if name:
         return logger.bind(module=name)
-    
+
     return logger
 
 def log_function_call(func_name: str, **kwargs):

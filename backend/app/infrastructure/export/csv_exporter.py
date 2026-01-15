@@ -81,12 +81,8 @@ class CSVExporter(BaseExporter):
             total_size = 0
             
             for name, content in csv_files.items():
-                if self.config.output_path:
-                    base_path = self.prepare_output_path(data)
-                    output_path = base_path.parent / f"{base_path.stem}_{name}.csv"
-                else:
-                    output_path = self.prepare_output_path(data)
-                    output_path = output_path.parent / f"{data.algorithm.name}_{name}.csv"
+                suffix = f"_{name}" if name != "summary" else ""
+                output_path = self.prepare_output_path(data, suffix=suffix)
                 
                 file_size = self.save_to_file(content, output_path)
                 total_size += file_size
@@ -157,15 +153,7 @@ class CSVExporter(BaseExporter):
         return output.getvalue()
     
     def _generate_line_analysis_csv(self, data: ExportData) -> str:
-        """
-        Genera CSV con análisis línea por línea.
-        
-        Args:
-            data: Datos del análisis
-            
-        Returns:
-            str: Contenido CSV
-        """
+        """Genera CSV con análisis línea por línea."""
         output = StringIO()
         writer = csv.writer(output)
         
@@ -182,7 +170,36 @@ class CSVExporter(BaseExporter):
         line_data = data.analysis.line_by_line
         
         if isinstance(line_data, dict):
-            for line_num, info in sorted(line_data.items()):
+            # Ordenar por número de línea
+            sorted_items = sorted(
+                line_data.items(), 
+                key=lambda x: int(x[0]) if isinstance(x[0], (int, str)) and str(x[0]).isdigit() else 0
+            )
+            
+            for line_num, info in sorted_items:
+                # Verificar que info sea un dict
+                if not isinstance(info, dict):
+                    continue
+                
+                code = info.get("code", "").strip()
+                complexity = info.get("complexity", "O(1)")
+                executions = info.get("executions", "1")
+                line_type = info.get("type", "statement")
+                
+                writer.writerow([
+                    line_num,
+                    code,
+                    complexity,
+                    executions,
+                    line_type
+                ])
+        elif isinstance(line_data, list):
+            # Si es una lista
+            for i, info in enumerate(line_data, 1):
+                if not isinstance(info, dict):
+                    continue
+                
+                line_num = info.get("line", i)
                 code = info.get("code", "").strip()
                 complexity = info.get("complexity", "O(1)")
                 executions = info.get("executions", "1")
@@ -226,7 +243,8 @@ class CSVExporter(BaseExporter):
             confidence = pattern.get("confidence", 0)
             score = pattern.get("score", 0)
             evidence = pattern.get("evidence", [])
-            
+            if not isinstance(evidence, (list, tuple)):
+                evidence = [evidence]
             # Extraer características de evidencia
             characteristics = []
             for ev in evidence:
@@ -234,7 +252,6 @@ class CSVExporter(BaseExporter):
                     characteristics.append(ev.get("feature", ""))
                 else:
                     characteristics.append(str(ev))
-            
             writer.writerow([
                 name,
                 f"{confidence:.4f}",

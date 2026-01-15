@@ -2,15 +2,15 @@
 Export Module - Sistema de exportación de resultados
 
 Proporciona exportadores para múltiples formatos:
-- JSON: Datos estructurados
-- Markdown: Documentación
-- PDF: Reportes profesionales
-- Excel: Análisis de datos
-- HTML: Visualización web
-- CSV: Datos tabulares
-- DOT: Visualización con Graphviz
-- Mermaid: Diagramas en Markdown
-- SVG: Gráficos vectoriales
+- JSON: Datos estructurados (.json)
+- Markdown: Documentación (.md)
+- PDF: Reportes profesionales (.pdf)
+- Excel: Análisis de datos (.xlsx)  
+- HTML: Visualización web (.html)
+- CSV: Datos tabulares (.csv)
+- DOT: Visualización con Graphviz (.dot)
+- Mermaid: Diagramas en Markdown (.mmd)  
+- SVG: Gráficos vectoriales (.svg)
 
 Uso básico:
     from app.infrastructure.export import export_analysis, ExportFormat
