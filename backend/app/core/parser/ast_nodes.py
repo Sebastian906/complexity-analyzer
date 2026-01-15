@@ -12,7 +12,6 @@ from typing import Any, List, Optional, Union
 from app.core.constants import ASTNodeType
 
 # Clase Base para Nodos AST
-
 @dataclass(kw_only=True)
 class ASTNode(ABC):
     """
@@ -41,7 +40,6 @@ class ASTNode(ABC):
         pass
 
 # Nodo de Programa
-
 @dataclass
 class ProgramNode(ASTNode):
     """Nodo raíz del programa"""
@@ -62,7 +60,6 @@ class ProgramNode(ASTNode):
         }
 
 # Definición de Clases
-
 @dataclass
 class ClassDefinitionNode(ASTNode):
     """Definición del algoritmo principal"""
@@ -85,7 +82,6 @@ class ClassDefinitionNode(ASTNode):
         }
 
 # Algoritmo
-
 @dataclass
 class AlgorithmNode(ASTNode):
     """Definición del algoritmo principal"""
@@ -112,7 +108,7 @@ class ParameterNode(ASTNode):
     """Parámetro de un algoritmo"""
     name: str
     param_type: str # "simple", "array", "object"
-    array_dimensions: List[Optional[int]] = field(default_factory=list)
+    array_dimensions: List[Optional[Union[int, 'RangeNode']]] = field(default_factory=list)
     class_name: Optional[str] = None
 
     def __post_init__(self):
@@ -131,12 +127,11 @@ class ParameterNode(ASTNode):
             "type": "parameter",
             "name": self.name,
             "param_type": self.param_type,
-            "array_dimensions": self.array_dimensions,
+            "array_dimensions": [d.to_dict() if isinstance(d, RangeNode) else d for d in self.array_dimensions],
             "class_name": self.class_name
         }
 
 # Bloque de Código
-
 @dataclass
 class BlockNode(ASTNode):
     """Bloque de código (begin...end)"""
@@ -155,7 +150,6 @@ class BlockNode(ASTNode):
         }
 
 # Asignación
-
 @dataclass
 class AssignmentNode(ASTNode):
     """Asignación: variable ← expresión"""
@@ -204,7 +198,6 @@ class LValueNode(ASTNode):
         }
 
 # Ciclos
-
 @dataclass
 class ForLoopNode(ASTNode):
     """Ciclo FOR: for variable ← start to end do ... end"""
@@ -267,7 +260,6 @@ class RepeatLoopNode(ASTNode):
         }
 
 # Condicional
-
 @dataclass
 class IfStatementNode(ASTNode):
     """Condicional IF: if (condition) then ... else ... end"""
@@ -290,7 +282,6 @@ class IfStatementNode(ASTNode):
         }
 
 # Llamadas
-
 @dataclass
 class CallStatementNode(ASTNode):
     """Llamada a subrutina: call function(args)"""
@@ -328,12 +319,10 @@ class ReturnStatementNode(ASTNode):
         }
 
 # Expresiones
-
 @dataclass
 class ExpressionNode(ASTNode):
     """Clase base para expresiones"""
     pass
-
 
 @dataclass
 class BinaryOpNode(ExpressionNode):
@@ -356,7 +345,6 @@ class BinaryOpNode(ExpressionNode):
             "right": self.right.to_dict()
         }
 
-
 @dataclass
 class UnaryOpNode(ExpressionNode):
     """Operación unaria: op operand"""
@@ -375,7 +363,6 @@ class UnaryOpNode(ExpressionNode):
             "operator": self.operator,
             "operand": self.operand.to_dict()
         }
-
 
 @dataclass
 class LiteralNode(ExpressionNode):
@@ -396,7 +383,6 @@ class LiteralNode(ExpressionNode):
             "literal_type": self.literal_type
         }
 
-
 @dataclass
 class VariableNode(ExpressionNode):
     """Variable simple"""
@@ -413,7 +399,6 @@ class VariableNode(ExpressionNode):
             "type": self.node_type.value,
             "name": self.name
         }
-
 
 @dataclass
 class ArrayAccessNode(ExpressionNode):
@@ -435,7 +420,6 @@ class ArrayAccessNode(ExpressionNode):
             "indices": [i.to_dict() for i in self.indices]
         }
 
-
 @dataclass
 class ObjectAccessNode(ExpressionNode):
     """Acceso a campo de objeto: obj.field"""
@@ -455,7 +439,6 @@ class ObjectAccessNode(ExpressionNode):
             "field_name": self.field_name
         }
 
-
 @dataclass
 class FunctionCallNode(ExpressionNode):
     """Llamada a función en expresión: func(args)"""
@@ -473,4 +456,27 @@ class FunctionCallNode(ExpressionNode):
             "type": "function_call",
             "function_name": self.function_name,
             "arguments": [a.to_dict() for a in self.arguments]
+        }
+
+@dataclass
+class RangeNode(ExpressionNode):
+    """
+    Representa un rango: 1..n
+    
+    Usado en parámetros de arrays como A[1..n]
+    """
+    start: Union[int, str, ExpressionNode]
+    end: Union[int, str, ExpressionNode]
+    
+    def __post_init__(self):
+        self.node_type = ASTNodeType.LITERAL  # Reutilizamos tipo existente
+    
+    def __repr__(self) -> str:
+        return f"{self.start}..{self.end}"
+    
+    def to_dict(self) -> dict:
+        return {
+            "type": "range",
+            "start": str(self.start),
+            "end": str(self.end)
         }

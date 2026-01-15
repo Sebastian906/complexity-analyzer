@@ -25,15 +25,14 @@ from app.core.patterns.detectors.recursive_detector import RecursiveDetector
 from app.core.patterns.detectors.divide_conquer_detector import DivideConquerDetector
 from app.core.patterns.detectors.dynamic_programming_detector import DynamicProgrammingDetector
 from app.core.patterns.detectors.greedy_detector import GreedyDetector
-
-# Los siguientes se importarán cuando estén implementados:
-# from app.core.patterns.detectors.backtracking_detector import BacktrackingDetector
-# from app.core.patterns.detectors.branch_bound_detector import BranchBoundDetector
-# from app.core.patterns.detectors.sorting_detector import SortingDetector
-# from app.core.patterns.detectors.searching_detector import SearchingDetector
-# from app.core.patterns.detectors.quantum_algorithms import QuantumAlgorithmsDetector
-# from app.core.patterns.detectors.bio_inspired_algorithms import BioInspiredDetector
-# from app.core.patterns.detectors.approximation_detector import ApproximationDetector
+from app.core.patterns.detectors.backtracking_detector import BacktrackingDetector
+from app.core.patterns.detectors.branch_bound_detector import BranchBoundDetector
+from app.core.patterns.detectors.sorting_and_searching import SortingDetector, SearchingDetector
+from app.core.patterns.detectors.advanced_patterns import (
+    QuantumAlgorithmsDetector,
+    BioInspiredDetector,
+    ApproximationDetector
+)
 
 __all__ = [
     "BruteForceDetector",
@@ -41,5 +40,11 @@ __all__ = [
     "DivideConquerDetector",
     "DynamicProgrammingDetector",
     "GreedyDetector",
-    # Agregar los demás cuando se implementen
+    "BacktrackingDetector",
+    "BranchBoundDetector",
+    "SortingDetector",
+    "SearchingDetector",
+    "QuantumAlgorithmsDetector",
+    "BioInspiredDetector",
+    "ApproximationDetector"
 ]

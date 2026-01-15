@@ -26,6 +26,7 @@ from app.core.parser.ast_nodes import (
     ObjectAccessNode,
     ParameterNode,
     ProgramNode,
+    RangeNode,
     RepeatLoopNode,
     ReturnStatementNode,
     UnaryOpNode,
@@ -532,8 +533,103 @@ class ASTBuilder(Transformer):
         """Regla condition: delega a logical_or"""
         return items[0]
 
+    def range_notation(self, items: List[Any]) -> 'RangeNode':
+        """
+        Regla range_notation: expression ".." expression
+
+        Procesa notaciones de rango como 1..n en parámetros de arrays.
+
+        Args:
+            items: [start_expression, end_expression]
+
+        Returns:
+            RangeNode: Nodo representando el rango
+        """
+        from app.core.parser.ast_nodes import RangeNode
+
+        start = items[0]
+        end = items[1]
+
+        # Convertir tokens a valores si es necesario
+        if isinstance(start, Token):
+            start = int(start) if start.type == 'NUMBER' else str(start)
+        if isinstance(end, Token):
+            end = int(end) if end.type == 'NUMBER' else str(end)
+
+        logger.debug(f"Range notation: {start}..{end}")
+
+        return RangeNode(start=start, end=end)
+
+    def array_bounds(self, items: List[Any]) -> Any:
+        """
+        Regla array_bounds: range_notation | expression
+
+        Procesa los límites de un array, que pueden ser un rango o una expresión.
+
+        Args:
+            items: [RangeNode o expression]
+
+        Returns:
+            El contenido (RangeNode, expresión, o None)
+        """
+        if not items:
+            return None
+
+        return items[0]
+
+    def array_parameter(self, items: List[Any]) -> ParameterNode:
+        """
+        Regla array_parameter: IDENTIFIER "[" array_bounds? "]" ...["]"]*
+
+        SOBRESCRIBE el método existente para manejar range_notation.
+
+        Args:
+            items: [name, bounds?, ...]
+
+        Returns:
+            ParameterNode con información del array
+        """
+        from app.core.parser.ast_nodes import RangeNode
+
+        name = str(items[0])
+        dimensions = []
+
+        # Procesar bounds y dimensiones adicionales
+        for item in items[1:]:
+            if item is None:
+                # Bound vacío: []
+                dimensions.append(None)
+            elif isinstance(item, RangeNode):
+                # Rango: [1..n]
+                # Guardar como string para compatibilidad
+                dimensions.append(f"{item.start}..{item.end}")
+            elif isinstance(item, Token):
+                # Token directo
+                if item.type == 'NUMBER':
+                    dimensions.append(int(item))
+                elif item.type == 'IDENTIFIER':
+                    dimensions.append(str(item))
+            elif isinstance(item, LiteralNode):
+                # Ya procesado como LiteralNode
+                dimensions.append(item.value)
+            elif isinstance(item, (str, int)):
+                # Ya convertido
+                dimensions.append(item)
+            # Ignorar otros tipos (corchetes, etc.)
+
+        # Si no hay dimensiones explícitas, agregar una dimensión sin tamaño
+        if not dimensions:
+            dimensions.append(None)
+
+        logger.debug(f"Array parameter: {name} with dimensions: {dimensions}")
+
+        return ParameterNode(
+            name=name,
+            param_type="array",
+            array_dimensions=dimensions
+        )
+
     # Manejo de Errores
-    
     def __default__(self, data: str, children: List[Any], meta) -> Any:
         """
         Handler por defecto para reglas no implementadas.

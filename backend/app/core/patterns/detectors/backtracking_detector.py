@@ -105,6 +105,19 @@ class BacktrackingDetector(BasePatternDetector):
             indicators_missing.append(backtrack)
 
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
+
+        # Backtracking requiere TODOS los indicadores principales
+        # Si falta exploración recursiva O poda O mecanismo de backtrack, no es backtracking
+        critical_indicators = [
+            analysis["has_recursive_exploration"],
+            analysis["has_pruning"],
+            analysis["has_backtrack_mechanism"]
+        ]
+
+        if not all(critical_indicators):
+            # Penalizar severamente - máximo 20% de confianza
+            confidence = min(confidence * 0.2, 0.2)
+
         reasoning = self._build_reasoning(analysis)
 
         return self._create_match(

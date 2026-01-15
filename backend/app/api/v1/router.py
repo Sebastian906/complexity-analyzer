@@ -11,6 +11,7 @@ from app.api.v1.endpoints import patterns
 from app.api.v1.endpoints import structures
 from app.api.v1.endpoints import visualization
 from app.api.v1.endpoints import services
+from app.api.v1.endpoints import export
 
 # Router principal
 api_router = APIRouter()
@@ -56,4 +57,10 @@ api_router.include_router(
     services.router,
     prefix="/services",
     tags=["Services"]
+)
+
+api_router.include_router(
+    export.router,
+    prefix="/export",
+    tags=["Export"]
 )

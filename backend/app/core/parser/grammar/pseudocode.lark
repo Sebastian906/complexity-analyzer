@@ -1,8 +1,7 @@
 // ============================================================================
 // GRAMÁTICA LARK - PSEUDOCÓDIGO ESTILO PSEINT
 // ============================================================================
-// Basada en la sintaxis de PSeInt y especificación del proyecto
-// Compatible con estructuras: FOR, WHILE, REPEAT, IF, CALL, arrays, objetos
+// CORREGIDA: Eliminada colisión Reduce/Reduce entre expression y condition
 
 // ============================================================================
 // PROGRAMA PRINCIPAL
@@ -32,7 +31,13 @@ parameter: array_parameter
          | object_parameter  
          | IDENTIFIER
 
-array_parameter: IDENTIFIER "[" (NUMBER | IDENTIFIER)? "]" ("[" (NUMBER | IDENTIFIER)? "]")*
+// Soportar notación de rango [1..n] en parámetros
+array_parameter: IDENTIFIER "[" array_bounds? "]" ("[" array_bounds? "]")*
+
+array_bounds: range_notation
+            | expression
+
+range_notation: expression ".." expression
 
 object_parameter: CLASS_NAME IDENTIFIER
 
@@ -83,16 +88,21 @@ lvalue: IDENTIFIER                           // variable simple
 for_loop: FOR IDENTIFIER ASSIGN expression TO expression DO block
 
 // WHILE loop: while (condition) do ... end  
-while_loop: WHILE "(" condition ")" DO block
+// CORREGIDO: usar expression en lugar de condition
+while_loop: WHILE "(" expression ")" DO block
 
 // REPEAT loop: repeat ... until (condition)
-repeat_loop: REPEAT statement_list UNTIL "(" condition ")"
+// CORREGIDO: usar expression en lugar de condition
+repeat_loop: REPEAT statement_list UNTIL "(" expression ")"
 
 // ============================================================================
 // ESTRUCTURA CONDICIONAL
 // ============================================================================
 
-if_statement: IF "(" condition ")" THEN block (ELSE block)?
+// IF soporta ambos: con y sin paréntesis
+// CORREGIDO: usar expression en lugar de condition
+if_statement: IF "(" expression ")" THEN block (ELSE block)?
+            | IF expression THEN block (ELSE block)?
 
 // ============================================================================
 // LLAMADAS Y RETORNO
@@ -103,7 +113,8 @@ call_statement: CALL IDENTIFIER "(" argument_list? ")"
 argument_list: argument ("," argument)*
 
 argument: expression                                    // incluye arrays via atom
-        | IDENTIFIER "[" expression ":" expression "]"  // A[1..j] - slice notation
+        | IDENTIFIER "[" expression ":" expression "]"  // A[1:j] - slice notation Python-style
+        | IDENTIFIER "[" expression ".." expression "]"  // A[1..j] - slice notation pseudocode-style
 
 return_statement: RETURN expression?
 
@@ -150,6 +161,7 @@ SUB: "-"
 MUL: "*"
 DIVIDE: "/"
 POW: "^"
+
 // Operadores de comparación como terminales explícitos
 LT: "<"
 GT: ">"
@@ -157,6 +169,7 @@ LE: "<=" | "≤"
 GE: ">=" | "≥"
 EQ: "="
 NE: "!=" | "≠"
+
 ?atom: NUMBER
      | BOOLEAN
      | STRING
@@ -173,10 +186,9 @@ NE: "!=" | "≠"
 function_call: IDENTIFIER "(" (expression ("," expression)*)? ")"
 
 // ============================================================================
-// CONDICIONES (usado en IF, WHILE, REPEAT)
+// CONDICIONES ELIMINADAS - Ahora se usa expression en todos lados
 // ============================================================================
-
-?condition: logical_or
+// La regla ?condition: logical_or ha sido ELIMINADA para resolver el conflicto
 
 // ============================================================================
 // TERMINALES - PALABRAS CLAVE
@@ -205,13 +217,11 @@ CALL.2: "call"i | "llamar"i
 RETURN.2: "return"i | "retornar"i | "devolver"i
 
 // Operadores lógicos
-// NOTA: "y" y "o" removidos porque causan conflictos con identificadores de una letra
 AND.2: "and"i | "&&"
 OR.2: "or"i | "||"
 NOT.2: "not"i | "no"i | "!"
 
 // Operadores matemáticos
-// NOTA: "mod" puede conflictuar con identificadores que empiecen con "mod", usar con cuidado
 MOD.2: "%" | "módulo"i
 DIV.2: "div"i
 
@@ -232,7 +242,6 @@ ASSIGN: "←" | ":="
 // ============================================================================
 
 // BOOLEAN necesita word boundaries para no capturar partes de identificadores
-// Usamos regex con alternancia para palabras completas
 BOOLEAN.2: /\b(TRUE|VERDADERO|FALSE|FALSO)\b/i
 
 NUMBER: /\d+(\.\d+)?/
