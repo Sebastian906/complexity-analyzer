@@ -56,6 +56,24 @@ class PatternScorer:
             "low_confidence": 0.40
         }
 
+        self.dominant_patterns = {
+            PatternType.DIVIDE_AND_CONQUER: [
+                PatternType.RECURSIVE,
+                PatternType.BACKTRACKING,
+            ],
+            PatternType.DYNAMIC_PROGRAMMING: [
+                PatternType.RECURSIVE,
+                PatternType.BRUTE_FORCE,
+            ],
+            PatternType.GREEDY: [
+                PatternType.BRUTE_FORCE,
+            ],
+            # AGREGAR ESTO:
+            PatternType.BACKTRACKING: [
+                PatternType.RECURSIVE,  # Backtracking domina sobre recursión genérica
+            ],
+        }
+
         # Patrones mutuamente excluyentes
         self.mutually_exclusive = {
             PatternType.BRUTE_FORCE: [PatternType.DYNAMIC_PROGRAMMING, PatternType.GREEDY],
