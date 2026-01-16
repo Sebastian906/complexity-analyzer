@@ -122,6 +122,11 @@ class DynamicProgrammingDetector(BasePatternDetector):
         # Calcular confianza
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
 
+        # PENALIZACIÓN si parece swap en lugar de DP
+        if analysis["has_memoization_table"] and not analysis.get("has_overlapping_subproblems"):
+            # Array usado pero sin reutilización clara = probablemente NO es DP
+            confidence = confidence * 0.3  # Penalización 70%
+
         # Reasoning
         reasoning = self._build_reasoning(analysis, indicators_found)
 
@@ -185,7 +190,86 @@ class DynamicProgrammingDetector(BasePatternDetector):
         elif recursive_calls > 0 and analysis["has_memoization_table"]:
             analysis["dp_approach"] = "top_down"
 
+        # Verificar que no sea solo modificación de array sin reutilización
+        if analysis["has_memoization_table"]:
+            # Verificar si hay LECTURA de valores previos del array
+            # (no solo escritura como en bubble sort)
+            has_reuse = self._has_subproblem_reuse(ast, analysis["memo_arrays"])
+
+            if not has_reuse:
+                # Es un array modificado pero no hay reutilización de subproblemas
+                # Probablemente NO es DP
+                analysis["has_memoization_table"] = False
+                analysis["memo_arrays"] = []
+
         return analysis
+    
+    def _has_subproblem_reuse(self, ast: ASTNode, array_names: list) -> bool:
+        """
+        Verifica si hay reutilización REAL de subproblemas.
+
+        DP verdadero: dp[i] = dp[i-1] + dp[i-2]  (LEE valores previos)
+        NO DP: A[j] = A[j+1]  (solo swap, no reutiliza soluciones)
+        """
+        from app.core.parser.ast_nodes import AssignmentNode, ArrayAccessNode, BinaryOpNode
+
+        reuse_count = 0
+
+        def _search(node: ASTNode):
+            nonlocal reuse_count
+
+            if isinstance(node, AssignmentNode):
+                # Verificar si el valor (right side) lee del mismo array
+                target_name = None
+                if hasattr(node.target, 'name'):
+                    target_name = node.target.name
+
+                if target_name in array_names:
+                    # Verificar si el value referencia el mismo array
+                    # Pero con un índice DIFERENTE (típico de DP)
+                    if self._references_different_index(node.value, target_name, node.target):
+                        reuse_count += 1
+
+            for child in get_node_children(node):
+                _search(child)
+
+        _search(ast)
+
+        # Si hay al menos 1 reutilización real, probablemente es DP
+        return reuse_count >= 1
+
+    def _references_different_index(self, expr: ASTNode, array_name: str, target) -> bool:
+        """
+        Verifica si la expresión referencia el array con un índice diferente.
+
+        Ejemplo DP: dp[i] = dp[i-1] + dp[i-2]
+        - target: dp[i]
+        - expr: contiene dp[i-1] y dp[i-2] (índices diferentes)
+
+        Ejemplo NO DP (swap): A[j] = A[j+1]
+        - target: A[j]
+        - expr: A[j+1] (índice diferente PERO es swap, no reutilización)
+        """
+        from app.core.parser.ast_nodes import BinaryOpNode, ArrayAccessNode
+
+        # Contar referencias al array en la expresión
+        references = []
+
+        def _collect_refs(node: ASTNode):
+            if isinstance(node, ArrayAccessNode):
+                if node.array_name == array_name:
+                    # Guardar índice
+                    index_expr = str(node.indices[0]) if node.indices else ""
+                    references.append(index_expr)
+
+            for child in get_node_children(node):
+                _collect_refs(child)
+
+        _collect_refs(expr)
+
+        # Si hay 2+ referencias (dp[i-1] + dp[i-2]), probablemente es DP
+        # Si hay 1 referencia (A[j+1]), probablemente es swap
+        return len(references) >= 2
 
     def _detect_table_filling(self, node: ASTNode) -> bool:
         """

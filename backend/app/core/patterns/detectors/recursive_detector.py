@@ -16,14 +16,7 @@ from app.core.patterns.base_pattern import (
 from app.core.patterns.pattern_matcher import PatternMatcher, get_node_children, get_algorithm_name
 
 class RecursiveDetector(BasePatternDetector):
-    """
-    Detector de algoritmos recursivos.
-
-    Características:
-    - Función que se llama a sí misma
-    - Caso base para terminar la recursión
-    - Puede ser recursión simple, múltiple o mutua
-    """
+    """Detector de algoritmos recursivos MEJORADO"""
 
     def __init__(self):
         super().__init__()
@@ -37,19 +30,19 @@ class RecursiveDetector(BasePatternDetector):
                 name="recursive_calls",
                 description="Llamadas recursivas presentes",
                 found=False,
-                weight=4.0
+                weight=5.0  # AUMENTADO de 4.0
             ),
             PatternIndicator(
                 name="base_case",
                 description="Caso base para terminar recursión",
                 found=False,
-                weight=3.0
+                weight=3.5  # AUMENTADO de 3.0
             ),
             PatternIndicator(
                 name="recursive_case",
                 description="Caso recursivo que reduce el problema",
                 found=False,
-                weight=2.0
+                weight=2.5  # AUMENTADO de 2.0
             ),
             PatternIndicator(
                 name="tail_recursion",
@@ -66,7 +59,7 @@ class RecursiveDetector(BasePatternDetector):
         indicators_found = []
         indicators_missing = []
 
-        # 1. Verificar llamadas recursivas
+        # 1. Verificar llamadas recursivas (CRÍTICO)
         recursive_calls = self._indicators[0]
         if analysis["recursive_call_count"] > 0:
             recursive_calls.found = True
@@ -107,7 +100,15 @@ class RecursiveDetector(BasePatternDetector):
         # Calcular confianza
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
 
-        # Reasoning
+        # BOOST para recursión clara
+        if analysis["recursive_call_count"] >= 2 and analysis["has_base_case"]:
+            # Recursión múltiple + caso base = muy probablemente recursión
+            confidence = min(confidence * 1.4, 0.95)  # Boost 40%
+        
+        # BOOST adicional si es recursión múltiple (fibonacci-style)
+        if analysis["recursion_type"] == "multiple":
+            confidence = min(confidence * 1.2, 0.95)
+
         reasoning = self._build_reasoning(analysis, indicators_found)
 
         return self._create_match(
@@ -122,7 +123,6 @@ class RecursiveDetector(BasePatternDetector):
         """Analiza la estructura recursiva"""
         from app.core.parser.ast_nodes import IfStatementNode, ProgramNode
 
-        # Obtener nombre del algoritmo usando helper
         algo_name = get_algorithm_name(ast)
 
         analysis = {
@@ -138,7 +138,7 @@ class RecursiveDetector(BasePatternDetector):
             result = PatternMatcher.has_recursive_calls(ast, algo_name)
             analysis["recursive_call_count"] = result.metadata.get("call_count", 0)
 
-        # Detectar caso base (condicional cerca del inicio)
+        # Detectar caso base (MEJORADO)
         analysis["has_base_case"] = self._has_base_case(ast)
 
         # Detectar recursión de cola
@@ -154,33 +154,52 @@ class RecursiveDetector(BasePatternDetector):
 
     def _has_base_case(self, node: ASTNode) -> bool:
         """
-        Detecta si hay un caso base.
+        Detecta caso base MEJORADO.
         
-        Busca un if que retorna o termina sin hacer llamadas recursivas.
+        Busca:
+        1. if con return directo
+        2. if con valor literal en return
+        3. if comparando con valor pequeño (n <= 1, n = 0, etc.)
         """
         from app.core.parser.ast_nodes import (
             IfStatementNode, 
             ReturnStatementNode,
-            BlockNode
+            BlockNode,
+            BinaryOpNode,
+            LiteralNode
         )
 
+        def _is_base_case_condition(condition: ASTNode) -> bool:
+            """Verifica si una condición parece ser caso base"""
+            if isinstance(condition, BinaryOpNode):
+                # Buscar comparaciones con valores pequeños
+                # n <= 1, n = 0, n < 2, etc.
+                if condition.operator in ['<=', '<', '=', '==']:
+                    # Verificar si compara con 0, 1, o 2
+                    if isinstance(condition.right, LiteralNode):
+                        if condition.right.value in [0, 1, 2]:
+                            return True
+            return False
+
         def _check_block_for_base(block_node: ASTNode) -> bool:
-            """Verifica si un bloque es caso base (no tiene recursión)"""
-            # Un caso base típicamente retorna directamente
+            """Verifica si un bloque es caso base"""
             for child in get_node_children(block_node):
                 if isinstance(child, ReturnStatementNode):
+                    # Return directo = probablemente caso base
                     return True
             return False
 
-        # Buscar if statements
         def _search(n: ASTNode) -> bool:
             if isinstance(n, IfStatementNode):
-                # Verificar si el then_block es caso base
+                # Verificar si la condición parece caso base
+                if _is_base_case_condition(n.condition):
+                    return True
+                
+                # Verificar si el then_block retorna
                 if isinstance(n.then_block, BlockNode):
                     if _check_block_for_base(n.then_block):
                         return True
 
-            # Recursivamente buscar en hijos
             for child in get_node_children(n):
                 if _search(child):
                     return True
@@ -190,21 +209,15 @@ class RecursiveDetector(BasePatternDetector):
         return _search(node)
 
     def _is_tail_recursive(self, node: ASTNode, func_name: str) -> bool:
-        """
-        Detecta recursión de cola.
-        
-        En recursión de cola, la llamada recursiva es la última operación.
-        """
+        """Detecta recursión de cola"""
         from app.core.parser.ast_nodes import (
             ReturnStatementNode,
             CallStatementNode,
             FunctionCallNode
         )
 
-        # Buscar return statements con llamadas recursivas
         def _check_tail(n: ASTNode) -> bool:
             if isinstance(n, ReturnStatementNode):
-                # Verificar si la expresión es una llamada recursiva
                 if n.value and isinstance(n.value, FunctionCallNode):
                     if n.value.function_name == func_name:
                         return True
@@ -240,10 +253,10 @@ class RecursiveDetector(BasePatternDetector):
         recursion_type = analysis["recursion_type"]
         type_desc = {
             "simple": "recursión simple",
-            "multiple": "recursión múltiple"
+            "multiple": "recursión múltiple (tipo árbol)"
         }.get(recursion_type, "recursión")
 
         return (
             f"El algoritmo usa {type_desc}: {', '.join(reasons)}. "
-            f"Esto indica una solución recursiva clara."
+            f"La recursión es la técnica principal del algoritmo."
         )

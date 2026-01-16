@@ -7,25 +7,20 @@ en cada paso sin retroceder.
 
 from typing import Dict, Any
 
-from app.core.parser.ast_nodes import ASTNode, AlgorithmNode, ForLoopNode, WhileLoopNode
+from app.core.parser.ast_nodes import (
+    ASTNode, AlgorithmNode, ForLoopNode, WhileLoopNode,
+    AssignmentNode, BlockNode, CallStatementNode
+)
 from app.core.patterns.base_pattern import (
     BasePatternDetector,
     PatternType,
     PatternIndicator,
     PatternMatch
 )
-from app.core.patterns.pattern_matcher import PatternMatcher, get_algorithm_name
+from app.core.patterns.pattern_matcher import PatternMatcher, get_algorithm_name, get_node_children
 
 class GreedyDetector(BasePatternDetector):
-    """
-    Detector de algoritmos Greedy.
-
-    Características:
-    - Elecciones localmente óptimas
-    - Iterativo (sin backtracking)
-    - Selección en cada paso
-    - Típicamente O(n log n)
-    """
+    """Detector de algoritmos Greedy - MEJORADO"""
 
     def __init__(self):
         super().__init__()
@@ -62,13 +57,14 @@ class GreedyDetector(BasePatternDetector):
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:
-        """Detecta si el algoritmo usa enfoque Greedy"""
+        """Detecta Greedy con penalización para backtracking"""
+        algo_name = get_algorithm_name(ast)
         analysis = self._analyze_structure(ast)
 
         indicators_found = []
         indicators_missing = []
 
-        # 1. Optimización local (INDICADOR CRÍTICO para Greedy)
+        # 1. Optimización local
         local_opt = self._indicators[0]
         if analysis["has_local_optimization"]:
             local_opt.found = True
@@ -106,12 +102,19 @@ class GreedyDetector(BasePatternDetector):
 
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
         
-        # AJUSTE CRÍTICO: Sin optimización local, no es un algoritmo Greedy verdadero
-        # Los otros indicadores (iterativo, sin backtracking, comparaciones) son genéricos
-        # y aplican a muchos otros patrones (Fuerza Bruta, ordenamiento simple, etc.)
+        # PENALIZACIONES CRÍTICAS
+        
+        # Si NO tiene optimización local, NO es greedy
         if not analysis["has_local_optimization"]:
-            # Sin el indicador principal, penalizar severamente
-            confidence = confidence * 0.3  # Reducir a máximo ~30% de la confianza original
+            confidence = confidence * 0.3
+        
+        # Si hay reversión de estado, NO es greedy (es backtracking)
+        if self._has_state_reversal(ast):
+            confidence = confidence * 0.1  # Penalización 90%
+        
+        # Si hay recursión dentro de loops, probablemente backtracking
+        if algo_name and self._has_recursion_in_loops(ast, algo_name):
+            confidence = confidence * 0.15  # Penalización 85%
         
         reasoning = self._build_reasoning(analysis, indicators_found)
 
@@ -124,7 +127,7 @@ class GreedyDetector(BasePatternDetector):
         )
 
     def _analyze_structure(self, ast: ASTNode) -> Dict[str, Any]:
-        """Analiza la estructura del algoritmo"""
+        """Analiza estructura"""
         algo_name = get_algorithm_name(ast)
 
         analysis = {
@@ -138,12 +141,10 @@ class GreedyDetector(BasePatternDetector):
             "comparisons": 0
         }
 
-        # Contar loops
         analysis["loops"] = PatternMatcher._count_nodes_of_type(
             ast, (ForLoopNode, WhileLoopNode)
         )
 
-        # Verificar si es iterativo (loops > 0, poca recursión)
         recursive_calls = 0
         if algo_name:
             result = PatternMatcher.has_recursive_calls(ast, algo_name)
@@ -151,23 +152,92 @@ class GreedyDetector(BasePatternDetector):
 
         analysis["is_iterative"] = analysis["loops"] > 0 and recursive_calls <= 1
 
-        # Detectar optimización local
         result = PatternMatcher.has_greedy_choice(ast)
         analysis["has_local_optimization"] = result.matched
         analysis["optimization_evidence"] = result.evidence
         analysis["comparisons"] = result.metadata.get("comparisons", 0)
 
-        # Verificar selección
         analysis["has_selection_pattern"] = analysis["comparisons"] > 0
 
-        # Verificar si hay backtracking
         if recursive_calls >= 2:
             analysis["no_backtracking"] = False
 
         return analysis
 
+    def _has_state_reversal(self, ast: ASTNode) -> bool:
+        """
+        Detecta reversión de estado (patrón backtracking).
+        
+        Greedy NUNCA retrocede, backtracking SÍ.
+        Busca: assign → ... → assign al mismo lugar
+        """
+        def _search_in_block(block: BlockNode) -> bool:
+            if not isinstance(block, BlockNode):
+                return False
+            
+            statements = block.statements
+            seen_targets = set()
+            
+            for stmt in statements:
+                if isinstance(stmt, AssignmentNode):
+                    target = self._get_target_name(stmt)
+                    if target:
+                        if target in seen_targets:
+                            # Ya se asignó a este target antes = reversión
+                            return True
+                        seen_targets.add(target)
+            
+            return False
+        
+        # Buscar en todos los bloques
+        def _traverse(node):
+            if isinstance(node, BlockNode):
+                if _search_in_block(node):
+                    return True
+            
+            for child in get_node_children(node):
+                if _traverse(child):
+                    return True
+            return False
+        
+        return _traverse(ast)
+
+    def _get_target_name(self, assign: AssignmentNode) -> str:
+        """Obtiene nombre del target de asignación"""
+        if hasattr(assign.target, 'name'):
+            return assign.target.name
+        return None
+
+    def _has_recursion_in_loops(self, ast: ASTNode, func_name: str) -> bool:
+        """
+        Detecta recursión dentro de loops (típico backtracking).
+        
+        Greedy típicamente NO tiene recursión en loops.
+        """
+        def _has_recursive_call(node: ASTNode) -> bool:
+            if isinstance(node, CallStatementNode):
+                if node.function_name == func_name:
+                    return True
+            
+            for child in get_node_children(node):
+                if _has_recursive_call(child):
+                    return True
+            return False
+        
+        def _search_loops(node: ASTNode) -> bool:
+            if isinstance(node, (ForLoopNode, WhileLoopNode)):
+                if _has_recursive_call(node.body):
+                    return True
+            
+            for child in get_node_children(node):
+                if _search_loops(child):
+                    return True
+            return False
+        
+        return _search_loops(ast)
+
     def _build_reasoning(self, analysis: Dict[str, Any], indicators: list) -> str:
-        """Construye explicación del razonamiento"""
+        """Construye razonamiento"""
         if not analysis["is_iterative"]:
             return "No se detectó enfoque iterativo, característico de algoritmos greedy."
 
@@ -190,5 +260,5 @@ class GreedyDetector(BasePatternDetector):
 
         return (
             f"El algoritmo usa enfoque Greedy: {', '.join(reasons)}. "
-            f"Esto sugiere construcción incremental de solución mediante elecciones óptimas locales."
+            f"Construye solución mediante elecciones óptimas locales."
         )
