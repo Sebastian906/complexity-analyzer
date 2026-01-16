@@ -13,7 +13,7 @@ from app.core.patterns.base_pattern import PatternMatch, PatternType, BasePatter
 from app.core.patterns.pattern_scorer import PatternScorer, ScoredPattern
 
 # Importar todos los detectores
-from app.core.patterns.detectors.brute_force import BruteForceDetector
+from app.core.patterns.detectors.brute_force_detector import BruteForceDetector
 from app.core.patterns.detectors.recursive_detector import RecursiveDetector
 from app.core.patterns.detectors.divide_conquer_detector import DivideConquerDetector
 from app.core.patterns.detectors.dynamic_programming_detector import DynamicProgrammingDetector

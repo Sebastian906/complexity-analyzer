@@ -20,7 +20,7 @@ Detectores por Implementar:
 - ApproximationDetector: Algoritmos de Aproximación
 """
 
-from app.core.patterns.detectors.brute_force import BruteForceDetector
+from app.core.patterns.detectors.brute_force_detector import BruteForceDetector
 from app.core.patterns.detectors.recursive_detector import RecursiveDetector
 from app.core.patterns.detectors.divide_conquer_detector import DivideConquerDetector
 from app.core.patterns.detectors.dynamic_programming_detector import DynamicProgrammingDetector
