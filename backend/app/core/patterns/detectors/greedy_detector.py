@@ -5,6 +5,7 @@ Identifica algoritmos que hacen elecciones localmente óptimas
 en cada paso sin retroceder.
 """
 
+import ast
 from typing import Dict, Any
 
 from app.core.parser.ast_nodes import (
@@ -20,7 +21,7 @@ from app.core.patterns.base_pattern import (
 from app.core.patterns.pattern_matcher import PatternMatcher, get_algorithm_name, get_node_children
 
 class GreedyDetector(BasePatternDetector):
-    """Detector de algoritmos Greedy - MEJORADO"""
+    """Detector de algoritmos Greedy"""
 
     def __init__(self):
         super().__init__()
@@ -104,20 +105,24 @@ class GreedyDetector(BasePatternDetector):
         
         # PENALIZACIONES CRÍTICAS
         
-        # Si NO tiene optimización local, NO es greedy
+        # 1. Si NO tiene optimización local, NO es greedy
         if not analysis["has_local_optimization"]:
-            confidence = confidence * 0.3
+            confidence = confidence * 0.20  # Penalización 80%
         
-        # Si hay reversión de estado, NO es greedy (es backtracking)
+        # 2. Si hay reversión de estado, NO es greedy (es backtracking)
         if self._has_state_reversal(ast):
-            confidence = confidence * 0.1  # Penalización 90%
+            confidence = confidence * 0.05  # Penalización 95%
         
-        # Si hay recursión dentro de loops, probablemente backtracking
+        # 3. Si hay recursión dentro de loops, probablemente backtracking
         if algo_name and self._has_recursion_in_loops(ast, algo_name):
-            confidence = confidence * 0.15  # Penalización 85%
+            confidence = confidence * 0.10  # Penalización 90%
+        
+        # 4. GENÉRICO: Si tiene división de espacio, NO es Greedy
+        if self._has_space_division_pattern(ast):
+            confidence = confidence * 0.05  # Penalización 95%
         
         reasoning = self._build_reasoning(analysis, indicators_found)
-
+        
         return self._create_match(
             confidence=confidence,
             indicators_found=indicators_found,
@@ -262,3 +267,72 @@ class GreedyDetector(BasePatternDetector):
             f"El algoritmo usa enfoque Greedy: {', '.join(reasons)}. "
             f"Construye solución mediante elecciones óptimas locales."
         )
+    
+    def _has_space_division_pattern(self, ast: ASTNode) -> bool:
+        """
+        Detecta patrón genérico de DIVISIÓN DE ESPACIO DE BÚSQUEDA.
+
+        Características:
+        - Variables que representan rangos (low/high, inicio/fin, left/right)
+        - Cálculo de punto medio (mid, medio, center)
+        - Actualización de rangos basada en comparaciones
+
+        Este patrón es común en:
+        - Binary Search
+        - Ternary Search
+        - Interpolation Search
+        - Exponential Search
+
+        NO ES GREEDY porque:
+        - Greedy hace elección óptima LOCAL sin considerar todo el espacio
+        - División de espacio REDUCE sistemáticamente el espacio completo
+        """
+        from app.core.parser.ast_nodes import AssignmentNode, BinaryOpNode
+
+        # Palabras clave genéricas para variables de rango
+        range_keywords = {
+            'low', 'high', 'left', 'right', 'inicio', 'fin',
+            'start', 'end', 'begin', 'limite', 'bound'
+        }
+
+        # Palabras clave para punto medio
+        midpoint_keywords = {
+            'mid', 'medio', 'center', 'centro', 'pivot', 'middle'
+        }
+
+        has_range_vars = False
+        has_midpoint_calculation = False
+        has_range_update = False
+
+        def _search(node: ASTNode):
+            nonlocal has_range_vars, has_midpoint_calculation, has_range_update
+
+            if isinstance(node, AssignmentNode):
+                if hasattr(node.target, 'name'):
+                    var_name = node.target.name.lower()
+
+                    # Detectar variables de rango
+                    if any(kw in var_name for kw in range_keywords):
+                        has_range_vars = True
+
+                    # Detectar cálculo de punto medio
+                    if any(kw in var_name for kw in midpoint_keywords):
+                        if isinstance(node.value, BinaryOpNode):
+                            # mid = (a + b) / 2 o mid = (a + b) // 2
+                            if node.value.operator in ['/', 'div', '//', 'DIV']:
+                                has_midpoint_calculation = True
+
+                    # Detectar actualización de rangos
+                    if any(kw in var_name for kw in range_keywords):
+                        if isinstance(node.value, BinaryOpNode):
+                            # low = mid + 1 o high = mid - 1
+                            if node.value.operator in ['+', '-']:
+                                has_range_update = True
+
+            for child in get_node_children(node):
+                _search(child)
+
+        _search(ast)
+
+        # Requiere los 3 componentes para ser considerado división de espacio
+        return has_range_vars and has_midpoint_calculation and has_range_update

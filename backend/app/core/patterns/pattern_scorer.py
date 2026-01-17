@@ -97,9 +97,13 @@ class PatternScorer:
 
         # Patrones dominantes (tienen prioridad sobre otros)
         self.dominant_patterns = {
+            PatternType.BACKTRACKING: [
+                PatternType.RECURSIVE,  # Backtracking domina sobre Recursión
+                PatternType.DIVIDE_AND_CONQUER,
+            ],
             PatternType.DIVIDE_AND_CONQUER: [
-                PatternType.RECURSIVE,  # D&C domina sobre recursión genérica
-                PatternType.BACKTRACKING,  # D&C domina si ambos tienen scores similares
+                PatternType.RECURSIVE,
+                PatternType.GREEDY,  # D&C domina sobre Greedy
             ],
             PatternType.DYNAMIC_PROGRAMMING: [
                 PatternType.RECURSIVE,
@@ -226,16 +230,8 @@ class PatternScorer:
 
         return conflicts
 
-    def _resolve_dominance(
-        self,
-        scored: List[ScoredPattern]
-    ) -> List[ScoredPattern]:
-        """
-        Resuelve conflictos de dominancia entre patrones.
-        
-        NUEVO: Si un patrón dominante tiene score similar a un patrón
-        que domina, se aumenta el score del dominante.
-        """
+    def _resolve_dominance(self, scored: List[ScoredPattern]) -> List[ScoredPattern]:
+        """Resuelve conflictos de dominancia con BOOSTS MAYORES"""
         for i, scored_pattern in enumerate(scored):
             pattern_type = scored_pattern.pattern.pattern_type
             
@@ -246,18 +242,20 @@ class PatternScorer:
                     other_type = other_scored.pattern.pattern_type
                     
                     if other_type in dominated:
-                        # Si scores son similares (diferencia < 20%)
-                        score_diff = abs(scored_pattern.final_score - other_scored.final_score)
+                        # Si scores son similares (diferencia < 30%)
+                        score_diff = abs(
+                            scored_pattern.final_score - other_scored.final_score
+                        )
                         
-                        if score_diff < 0.20:
-                            # Boost al patrón dominante
+                        if score_diff < 0.30:  # Aumentado de 0.20
+                            # Boost MAYOR al patrón dominante
                             scored[i].final_score = min(
-                                scored_pattern.final_score * 1.15,
+                                scored_pattern.final_score * 1.25,  # 25% boost
                                 0.95
                             )
                             
-                            # Penalizar al patrón dominado
-                            other_scored.final_score *= 0.85
+                            # Penalizar MÁS al patrón dominado
+                            other_scored.final_score *= 0.75  # 25% penalización
         
         return scored
 

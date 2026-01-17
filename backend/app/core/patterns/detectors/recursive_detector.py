@@ -97,17 +97,32 @@ class RecursiveDetector(BasePatternDetector):
         else:
             indicators_missing.append(tail_recursion)
 
-        # Calcular confianza
+        # Calcular confianza BASE
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
+        # DEBUG TEMPORAL
+        print(f"[DEBUG] Fibonacci: recursive_calls={analysis['recursive_call_count']}, base_confidence={confidence}")
 
-        # BOOST para recursión clara
-        if analysis["recursive_call_count"] >= 2 and analysis["has_base_case"]:
-            # Recursión múltiple + caso base = muy probablemente recursión
-            confidence = min(confidence * 1.4, 0.95)  # Boost 40%
-        
-        # BOOST adicional si es recursión múltiple (fibonacci-style)
-        if analysis["recursion_type"] == "multiple":
-            confidence = min(confidence * 1.2, 0.95)
+        # AJUSTES CRÍTICOS DE CONFIANZA 
+        # NUEVA LÓGICA: Recursión múltiple es EL INDICADOR MÁS FUERTE
+
+        if analysis["recursive_call_count"] >= 2:
+            # Recursión múltiple (Fibonacci, Torres de Hanoi, etc.)
+            # ES DEFINITIVAMENTE recursión - confianza mínima 90%
+            confidence = max(confidence, 0.90)
+            print(f"[DEBUG] Fibonacci: BOOST aplicado, nueva confianza={confidence}")
+
+            # Si además tiene caso base -> 95%
+            if analysis["has_base_case"]:
+                confidence = max(confidence, 0.95)
+                print(f"[DEBUG] Fibonacci: BOOST caso base, confianza final={confidence}")  # DEBUG
+
+        # Si tiene solo 1 llamada recursiva -> confianza moderada
+        elif analysis["recursive_call_count"] == 1:
+            confidence = max(confidence, 0.60)  # Mínimo 60%
+
+            # Con caso base -> boost a 70%
+            if analysis["has_base_case"]:
+                confidence = max(confidence, 0.70)
 
         reasoning = self._build_reasoning(analysis, indicators_found)
 
@@ -153,52 +168,41 @@ class RecursiveDetector(BasePatternDetector):
         return analysis
 
     def _has_base_case(self, node: ASTNode) -> bool:
-        """
-        Detecta caso base MEJORADO.
-        
-        Busca:
-        1. if con return directo
-        2. if con valor literal en return
-        3. if comparando con valor pequeño (n <= 1, n = 0, etc.)
-        """
+        """Detecta caso base con REGLAS MÁS FLEXIBLES"""
         from app.core.parser.ast_nodes import (
-            IfStatementNode, 
-            ReturnStatementNode,
-            BlockNode,
-            BinaryOpNode,
-            LiteralNode
+            IfStatementNode, ReturnStatementNode,
+            BlockNode, BinaryOpNode, LiteralNode
         )
 
         def _is_base_case_condition(condition: ASTNode) -> bool:
-            """Verifica si una condición parece ser caso base"""
+            """Verifica si una condición es caso base"""
             if isinstance(condition, BinaryOpNode):
-                # Buscar comparaciones con valores pequeños
                 # n <= 1, n = 0, n < 2, etc.
                 if condition.operator in ['<=', '<', '=', '==']:
-                    # Verificar si compara con 0, 1, o 2
-                    if isinstance(condition.right, LiteralNode):
-                        if condition.right.value in [0, 1, 2]:
-                            return True
-            return False
+                    # Verificar si compara con valores pequeños
+                    right = condition.right
+                    left = condition.left
 
-        def _check_block_for_base(block_node: ASTNode) -> bool:
-            """Verifica si un bloque es caso base"""
-            for child in get_node_children(block_node):
-                if isinstance(child, ReturnStatementNode):
-                    # Return directo = probablemente caso base
-                    return True
+                    # Comparación con literal pequeño
+                    if isinstance(right, LiteralNode):
+                        if right.value in [0, 1, 2]:
+                            return True
+                    if isinstance(left, LiteralNode):
+                        if left.value in [0, 1, 2]:
+                            return True
             return False
 
         def _search(n: ASTNode) -> bool:
             if isinstance(n, IfStatementNode):
-                # Verificar si la condición parece caso base
+                # Verificar condición
                 if _is_base_case_condition(n.condition):
                     return True
-                
-                # Verificar si el then_block retorna
+
+                # Verificar si retorna directamente
                 if isinstance(n.then_block, BlockNode):
-                    if _check_block_for_base(n.then_block):
-                        return True
+                    for child in get_node_children(n.then_block):
+                        if isinstance(child, ReturnStatementNode):
+                            return True
 
             for child in get_node_children(n):
                 if _search(child):

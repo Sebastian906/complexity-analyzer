@@ -21,21 +21,7 @@ from app.core.patterns.base_pattern import (
 from app.core.patterns.pattern_matcher import PatternMatcher, get_node_children, get_algorithm_name
 
 class DivideConquerDetector(BasePatternDetector):
-    """
-    Detector de algoritmos Divide y Vencerás MEJORADO.
-    
-    Características REALES de D&C:
-    1. División del problema en subproblemas INDEPENDIENTES
-    2. Resolución recursiva de subproblemas
-    3. Combinación de soluciones
-    4. SIN exploración exhaustiva (eso es backtracking)
-    5. SIN loops para iterar sobre todas las opciones
-    
-    Ejemplos clásicos:
-    - MergeSort, QuickSort: divide array en mitades
-    - Binary Search: divide espacio de búsqueda
-    - Multiplicación de Karatsuba
-    """
+    """Detector de algoritmos Divide y Vencerás"""
 
     def __init__(self):
         super().__init__()
@@ -49,7 +35,7 @@ class DivideConquerDetector(BasePatternDetector):
                 name="problem_division",
                 description="División clara del problema (n/2, mid, partición)",
                 found=False,
-                weight=5.0  # MUY IMPORTANTE
+                weight=5.0
             ),
             PatternIndicator(
                 name="recursive_solution",
@@ -79,7 +65,7 @@ class DivideConquerDetector(BasePatternDetector):
                 name="no_exhaustive_search",
                 description="SIN exploración exhaustiva (no es backtracking)",
                 found=False,
-                weight=3.0  # IMPORTANTE para diferenciación
+                weight=3.0
             ),
         ]
 
@@ -135,7 +121,7 @@ class DivideConquerDetector(BasePatternDetector):
         else:
             indicators_missing.append(balanced)
 
-        # 6. NO es exploración exhaustiva (diferenciador clave)
+        # 6. NO es exploración exhaustiva
         no_exhaustive = self._indicators[5]
         if not analysis["has_exhaustive_loops"]:
             no_exhaustive.found = True
@@ -153,21 +139,30 @@ class DivideConquerDetector(BasePatternDetector):
         if (analysis["has_division"] and 
             analysis["recursive_calls"] >= 2 and 
             not analysis["has_exhaustive_loops"]):
-            confidence = min(confidence * 1.3, 0.95)  # Boost 30%
+            confidence = min(confidence * 1.3, 0.95)
         
         # BOOST adicional si división es balanceada
         if analysis["is_balanced_division"]:
             confidence = min(confidence * 1.15, 0.95)
         
+        # BOOST CRÍTICO si es D&C iterativo (Binary Search)
+        if analysis.get("is_iterative_dc", False):
+            confidence = min(confidence * 1.5, 0.95)  # BOOST 50%
+        
         # PENALIZACIÓN si tiene loops exhaustivos (parece backtracking)
         if analysis["has_exhaustive_loops"]:
-            confidence = confidence * 0.4  # Penalización 60%
+            confidence = confidence * 0.4
         
         # PENALIZACIÓN si no hay división clara
         if not analysis["has_division"]:
-            confidence = min(confidence * 0.3, 0.3)  # Máximo 30%
+            confidence = min(confidence * 0.3, 0.3)
 
+        # CONSTRUIR REASONING ANTES DE USARLO (FIX CRÍTICO)
         reasoning = self._build_reasoning(analysis, indicators_found)
+        
+        # Si es D&C iterativo, agregar al reasoning
+        if analysis.get("is_iterative_dc", False):
+            reasoning += " Detectado como D&C iterativo (ej: Binary Search)."
 
         return self._create_match(
             confidence=confidence,
@@ -178,7 +173,7 @@ class DivideConquerDetector(BasePatternDetector):
         )
 
     def _analyze_structure(self, ast: ASTNode) -> Dict[str, Any]:
-        """Analiza la estructura del algoritmo con detección MEJORADA"""
+        """Analiza estructura con detección"""
         algo_name = get_algorithm_name(ast)
 
         analysis = {
@@ -190,6 +185,7 @@ class DivideConquerDetector(BasePatternDetector):
             "has_base_case": False,
             "is_balanced_division": False,
             "has_exhaustive_loops": False,
+            "is_iterative_dc": False,
         }
 
         # Contar llamadas recursivas
@@ -197,7 +193,10 @@ class DivideConquerDetector(BasePatternDetector):
             result = PatternMatcher.has_recursive_calls(ast, algo_name)
             analysis["recursive_calls"] = result.metadata.get("call_count", 0)
 
-        # Detectar división del problema (MEJORADO)
+        # NUEVO: Detectar D&C iterativo
+        analysis["is_iterative_dc"] = self._is_iterative_divide_conquer(ast)
+
+        # Detectar división del problema
         division_info = self._detect_division(ast, algo_name)
         analysis["has_division"] = division_info["found"]
         analysis["division_evidence"] = division_info["evidence"]
@@ -209,20 +208,73 @@ class DivideConquerDetector(BasePatternDetector):
         # Detectar caso base
         analysis["has_base_case"] = self._detect_base_case(ast)
 
-        # Detectar loops exhaustivos (típico de backtracking, NO de D&C)
+        # Detectar loops exhaustivos
         analysis["has_exhaustive_loops"] = self._has_exhaustive_loops(ast)
 
         return analysis
 
-    def _detect_division(self, node: ASTNode, func_name: str) -> Dict[str, Any]:
+    def _is_iterative_divide_conquer(self, ast: ASTNode) -> bool:
         """
-        Detecta si hay división del problema - MEJORADO.
+        Detecta D&C iterativo.
         
-        Busca patrones típicos de D&C:
-        - División binaria: n/2, mid = (left + right) / 2
-        - Partición: partition(A, low, high)
-        - Reducción: n-1 (menos común pero válido)
+        Requiere:
+        - Loop (while/for)
+        - Al menos 2 variables de rango DIFERENTES (low Y high)
+        - Cálculo de punto medio
         """
+        from app.core.parser.ast_nodes import (
+            WhileLoopNode, ForLoopNode, AssignmentNode, BinaryOpNode
+        )
+        
+        # Variables genéricas de rango
+        range_vars = {
+            'low', 'high', 'left', 'right', 'inicio', 'fin',
+            'start', 'end', 'l', 'r', 'i', 'j', 'izq', 'der'
+        }
+        
+        # Variables de punto medio
+        midpoint_vars = {
+            'mid', 'medio', 'center', 'pivot', 'm', 'p'
+        }
+        
+        has_range_vars = set()
+        has_midpoint_calc = False
+        has_loop = False
+        
+        def _search(node: ASTNode):
+            nonlocal has_midpoint_calc, has_loop
+            
+            # Detectar loops
+            if isinstance(node, (WhileLoopNode, ForLoopNode)):
+                has_loop = True
+            
+            if isinstance(node, AssignmentNode):
+                if hasattr(node.target, 'name'):
+                    var_name = node.target.name.lower()
+                    
+                    # Detectar variables de rango
+                    for rv in range_vars:
+                        if rv in var_name:
+                            has_range_vars.add(rv)
+                    
+                    # Detectar cálculo de punto medio
+                    for mv in midpoint_vars:
+                        if mv in var_name:
+                            if isinstance(node.value, BinaryOpNode):
+                                # mid = (low + high) / 2
+                                if node.value.operator in ['/', 'div', '//', '+']:
+                                    has_midpoint_calc = True
+            
+            for child in get_node_children(node):
+                _search(child)
+        
+        _search(ast)
+        
+        # Requiere: loop + al menos 2 variables de rango diferentes + punto medio
+        return has_loop and len(has_range_vars) >= 2 and has_midpoint_calc
+
+    def _detect_division(self, node: ASTNode, func_name: str) -> Dict[str, Any]:
+        """Detecta si hay división del problema"""
         division_info = {
             "found": False,
             "evidence": "",
@@ -233,11 +285,9 @@ class DivideConquerDetector(BasePatternDetector):
         division_vars = set()
         
         def _search_division_patterns(n: ASTNode):
-            # Patrón 1: Asignaciones con división
             if isinstance(n, AssignmentNode):
                 if hasattr(n, 'value') and isinstance(n.value, BinaryOpNode):
                     # mid = (left + right) / 2
-                    # q = n / 2
                     if n.value.operator in ['/', 'div']:
                         if isinstance(n.value.right, LiteralNode) and n.value.right.value == 2:
                             division_vars.add("binary_division")
@@ -245,7 +295,7 @@ class DivideConquerDetector(BasePatternDetector):
                         else:
                             division_vars.add("division")
             
-            # Patrón 2: Llamadas a función partition/split
+            # Llamadas a partition/split
             if isinstance(n, (CallStatementNode, FunctionCallNode)):
                 func_called = n.function_name if hasattr(n, 'function_name') else None
                 if func_called and any(kw in func_called.lower() for kw in ['partition', 'split', 'divide']):
@@ -256,7 +306,7 @@ class DivideConquerDetector(BasePatternDetector):
         
         _search_division_patterns(node)
         
-        # Buscar llamadas recursivas con argumentos reducidos
+        # Llamadas recursivas con argumentos reducidos
         if func_name:
             recursive_with_reduction = self._has_recursive_with_reduction(node, func_name)
             if recursive_with_reduction:
@@ -283,10 +333,8 @@ class DivideConquerDetector(BasePatternDetector):
         def _search(n: ASTNode) -> bool:
             if isinstance(n, CallStatementNode):
                 if n.function_name == func_name:
-                    # Verificar si argumentos sugieren reducción
                     for arg in n.arguments:
                         if isinstance(arg, BinaryOpNode):
-                            # n-1, n/2, etc
                             if arg.operator in ['-', '/', 'div']:
                                 return True
             
@@ -298,25 +346,15 @@ class DivideConquerDetector(BasePatternDetector):
         return _search(node)
 
     def _detect_combination(self, node: ASTNode) -> bool:
-        """
-        Detecta si hay combinación de resultados.
-        
-        D&C típicamente combina resultados con:
-        - merge(left_result, right_result)
-        - left_result + right_result
-        - Operaciones sobre múltiples variables de resultado
-        """
+        """Detecta si hay combinación de resultados"""
         from app.core.parser.ast_nodes import AssignmentNode, ReturnStatementNode
         
         def _search(n: ASTNode) -> bool:
-            # Buscar returns o assignments que combinen valores
             if isinstance(n, (AssignmentNode, ReturnStatementNode)):
                 expr = n.value if isinstance(n, AssignmentNode) else n.value
                 if expr and isinstance(expr, BinaryOpNode):
-                    # Hay combinación si usa operador binario
                     return True
                 
-                # Buscar llamadas a merge/combine
                 if isinstance(expr, FunctionCallNode):
                     if any(kw in expr.function_name.lower() for kw in ['merge', 'combine', 'concat']):
                         return True
@@ -329,7 +367,7 @@ class DivideConquerDetector(BasePatternDetector):
         return _search(node)
 
     def _detect_base_case(self, node: ASTNode) -> bool:
-        """Detecta caso base - mismo que antes"""
+        """Detecta caso base"""
         def _search(n: ASTNode) -> bool:
             if isinstance(n, IfStatementNode):
                 if isinstance(n.then_block, BlockNode):
@@ -345,16 +383,8 @@ class DivideConquerDetector(BasePatternDetector):
         return _search(node)
 
     def _has_exhaustive_loops(self, node: ASTNode) -> bool:
-        """
-        Detecta si hay loops que sugieren exploración exhaustiva.
-        
-        D&C típicamente NO usa loops para explorar todas las opciones.
-        Si hay loops + recursión múltiple = probablemente backtracking.
-        """
+        """Detecta si hay loops que sugieren exploración exhaustiva"""
         loops = PatternMatcher._count_nodes_of_type(node, (ForLoopNode, WhileLoopNode))
-        
-        # D&C puede tener loops auxiliares (ej: para merge), pero no muchos
-        # Si hay muchos loops, probablemente no es D&C puro
         return loops >= 2
 
     def _build_reasoning(
@@ -362,7 +392,7 @@ class DivideConquerDetector(BasePatternDetector):
         analysis: Dict[str, Any],
         indicators: list
     ) -> str:
-        """Construye explicación del razonamiento - MEJORADO"""
+        """Construye explicación del razonamiento"""
         if analysis["recursive_calls"] < 2:
             return "No es Divide y Conquista: requiere al menos 2 llamadas recursivas a subproblemas."
         

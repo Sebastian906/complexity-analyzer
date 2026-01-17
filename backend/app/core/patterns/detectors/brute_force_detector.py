@@ -118,10 +118,16 @@ class BruteForceDetector(BasePatternDetector):
         # BOOST CRÍTICO: Si tiene loops anidados + swap, es MUY probablemente fuerza bruta
         if analysis["max_loop_depth"] >= 2 and analysis["has_swap_pattern"]:
             confidence = min(confidence * 1.5, 0.95)  # Boost 50%
-        
+
         # BOOST adicional si tiene loops anidados sin optimización
         if analysis["max_loop_depth"] >= 2 and not analysis["has_memoization"]:
             confidence = min(confidence * 1.2, 0.95)
+
+        # PENALIZACIÓN CRÍTICA: Si tiene recursión múltiple sin loops
+        # Esto significa que es recursión pura (como Fibonacci), NO fuerza bruta
+        algo_name = analysis.get("algorithm_name")
+        if self._has_multiple_recursion_no_loops(ast, algo_name):
+            confidence = confidence * 0.01  # Penalización 99% - CASI CERO
 
         reasoning = self._build_reasoning(analysis, indicators_found)
 
@@ -205,3 +211,23 @@ class BruteForceDetector(BasePatternDetector):
             f"Explora exhaustivamente sin optimización, "
             f"típico de algoritmos O(n²) o superiores."
         )
+    
+    def _has_multiple_recursion_no_loops(self, ast: ASTNode, algo_name: str) -> bool:
+        """
+        Detecta si hay recursión múltiple SIN loops.
+
+        Returns:
+            True si tiene recursión múltiple sin loops
+        """
+        if not algo_name:
+            return False
+
+        # Contar llamadas recursivas
+        result = PatternMatcher.has_recursive_calls(ast, algo_name)
+        recursive_calls = result.metadata.get("call_count", 0)
+
+        # Contar loops
+        loops = self._count_all_loops(ast)
+
+        # Si tiene 2+ recursivas pero 0 loops -> es recursión pura, NO fuerza bruta
+        return recursive_calls >= 2 and loops == 0
