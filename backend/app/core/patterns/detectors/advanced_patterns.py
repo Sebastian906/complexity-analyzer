@@ -230,7 +230,7 @@ class ApproximationDetector(BasePatternDetector):
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:
-        """Detecta algoritmos de aproximación"""
+        """Detecta algoritmos de aproximación CON CRITERIOS ESTRICTOS"""
         analysis = self._analyze_structure(ast)
 
         indicators_found = []
@@ -245,13 +245,25 @@ class ApproximationDetector(BasePatternDetector):
 
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
         
-        # Penalización por defecto - muy difícil de detectar
-        confidence = min(confidence * 0.3, 0.3)
+        # PENALIZACIÓN MASIVA - Muy difícil de detectar sin contexto
+        confidence = min(confidence * 0.15, 0.20)  # Máximo 20%
+        
+        # Si NO tiene palabras clave específicas, penalizar más
+        approx_keywords = {'approx', 'aproxim', 'estimate', 'heuristic'}
+        has_approx_name = False
+        
+        from app.core.parser.ast_nodes import AlgorithmNode
+        if isinstance(ast, AlgorithmNode):
+            algo_name = ast.name.lower()
+            has_approx_name = any(kw in algo_name for kw in approx_keywords)
+        
+        if not has_approx_name:
+            confidence = min(confidence * 0.5, 0.15)  # Máximo 15%
         
         reasoning = (
-            "Algoritmos de aproximación son difíciles de distinguir "
+            "Algoritmos de aproximación son muy difíciles de distinguir "
             "de algoritmos greedy sin conocer el contexto del problema. "
-            "Se recomienda validación con LLM."
+            "Se recomienda validación manual o con LLM."
         )
 
         return self._create_match(
