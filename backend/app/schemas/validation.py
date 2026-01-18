@@ -113,6 +113,10 @@ class ValidationRequest(BaseModel):
         True,
         description="Verificar complejidad ciclomática"
     )
+    check_best_practices: bool = Field(
+        True,
+        description="Verificar mejores prácticas"
+    )
     
     class Config:
         json_schema_extra = {

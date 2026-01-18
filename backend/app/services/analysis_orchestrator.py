@@ -142,7 +142,15 @@ class AnalysisOrchestrator:
                     started_at=started_at,
                     start_time=start_time,
                     algorithm_name="unknown",
-                    algorithm_info=None,
+                    algorithm_info=AlgorithmInfo(
+                        name="unknown",
+                        parameters=[],
+                        has_recursion=False,
+                        has_loops=False,
+                        max_nesting_depth=0,
+                        total_lines=0,
+                        total_statements=0
+                    ),
                     errors=errors,
                     warnings=warnings,
                 )

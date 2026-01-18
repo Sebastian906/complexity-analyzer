@@ -46,7 +46,12 @@ def generate_cache_key(prefix: CacheKey, code: str, **kwargs) -> str:
     params_str = json.dumps(kwargs, sort_keys=True)
     params_hash = hashlib.md5(params_str.encode('utf-8')).hexdigest()[:8]
 
-    return f"{prefix.value}:{code_hash}:{params_hash}"
+    # Si prefix es Enum, usar .value, si es str, usar directamente
+    if hasattr(prefix, 'value'):
+        prefix_val = prefix.value
+    else:
+        prefix_val = str(prefix)
+    return f"{prefix_val}:{code_hash}:{params_hash}"
 
 @dataclass
 class CacheEntry:
@@ -127,7 +132,7 @@ class CacheService:
         key: str,
         value: Any,
         ttl: Optional[int] = None,
-        cache_type: Optional[CacheKey] = None
+        cache_type: Optional[str] = None
     ) -> bool:
         """
         Almacena valor en caché.
