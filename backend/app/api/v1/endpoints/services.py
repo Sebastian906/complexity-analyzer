@@ -52,8 +52,8 @@ from app.services import (
     ExportService,
     CacheService,
     get_cache_service,
-    AlgorithmStatus,
 )
+from app.schemas import StatusEnum
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
