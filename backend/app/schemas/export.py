@@ -145,13 +145,13 @@ class ExportRequest(BaseModel):
         description="Ruta completa de salida"
     )
     
-    @field_validator('analysis_id', 'code')
-    @classmethod
-    def validate_source(cls, v, info):
-        """Valida que se proporcione analysis_id O code"""
-        if info.data.get('analysis_id') is None and info.data.get('code') is None:
+    from pydantic import model_validator
+
+    @model_validator(mode="after")
+    def check_analysis_id_or_code(cls, values):
+        if not values.analysis_id and not values.code:
             raise ValueError("Debe proporcionar 'analysis_id' o 'code'")
-        return v
+        return values
     
     class Config:
         json_schema_extra = {

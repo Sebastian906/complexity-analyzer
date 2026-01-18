@@ -19,18 +19,15 @@ Example:
 
 from app.services.algorithm_service import (
     AlgorithmService,
-    AlgorithmCreateRequest,
-    AlgorithmUpdateRequest,
+    AlgorithmCreate,
+    AlgorithmUpdate,
     AlgorithmSearchCriteria,
     AlgorithmCategory,
-    AlgorithmStatus,
 )
 from app.services.analysis_orchestrator import (
     AnalysisOrchestrator,
     CompleteAnalysisRequest,
     CompleteAnalysisResult,
-    AnalysisStep,
-    AnalysisStatus,
 )
 from app.services.validation_service import (
     ValidationService,
@@ -57,18 +54,15 @@ from app.services.cache_service import (
 __all__ = [
     # Algorithm Service
     "AlgorithmService",
-    "AlgorithmCreateRequest",
-    "AlgorithmUpdateRequest",
+    "AlgorithmCreate",
+    "AlgorithmUpdate",
     "AlgorithmSearchCriteria",
     "AlgorithmCategory",
-    "AlgorithmStatus",
     
     # Analysis Orchestrator
     "AnalysisOrchestrator",
     "CompleteAnalysisRequest",
     "CompleteAnalysisResult",
-    "AnalysisStep",
-    "AnalysisStatus",
     
     # Validation Service
     "ValidationService",
