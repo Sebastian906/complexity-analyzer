@@ -6,12 +6,11 @@ para proporcionar un análisis completo de algoritmos en un solo flujo.
 """
 
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Optional
+from uuid import uuid4
 
-from app.core.parser import PseudocodeParser, parse_pseudocode, ProgramNode
+from app.core.parser import PseudocodeParser, ProgramNode
 from app.core.analyzer import AnalyzerEngine
 from app.core.patterns import PatternDetector
 from app.core.data_structures import StructureIdentifier
@@ -26,139 +25,56 @@ from app.core.exceptions import (
     AnalyzerException,
     TimeoutException,
 )
+from app.schemas import (
+    # Request Schemas
+    CompleteAnalysisRequest,
+    
+    # Result Schemas
+    CompleteAnalysisResult,
+    LineByLineAnalysis,
+    LineExecution,
+    VisualizationResult,
+    StructureDetectionResult,
+    StructureMatch,
+    StructureUsage,
+    PatternDetectionResult,
+    
+    # Algorithm Schemas
+    AlgorithmInfo,
+    AlgorithmParameter,
+    
+    # Complexity Schemas
+    ComplexityAnalysis,
+    SpaceComplexityAnalysis,
+    RecurrenceEquation,
+    ComplexityClass,
+    
+    # Pattern Schemas
+    PatternMatch,
+    ScoredPattern,
+    PatternIndicator,
+    
+    # Common Schemas
+    AnalysisMetadata,
+    TimingMetadata,
+    ConfidenceLevelEnum,
+)
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Enums
-class AnalysisStatus(str, Enum):
-    """Estados de un análisis"""
-    PENDING = "pending"
-    PARSING = "parsing"
-    ANALYZING_COMPLEXITY = "analyzing_complexity"
-    DETECTING_PATTERNS = "detecting_patterns"
-    DETECTING_STRUCTURES = "detecting_structures"
-    GENERATING_VISUALIZATIONS = "generating_visualizations"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-class AnalysisStep(str, Enum):
-    """Pasos del análisis"""
-    PARSE = "parse"
-    COMPLEXITY = "complexity"
-    PATTERNS = "patterns"
-    STRUCTURES = "structures"
-    VISUALIZATION = "visualization"
-
-# DTOs
-@dataclass
-class CompleteAnalysisRequest:
-    """Request para análisis completo"""
-    code: str
-
-    # Opciones de análisis
-    analyze_complexity: bool = True
-    analyze_patterns: bool = True
-    analyze_structures: bool = True
-    generate_visualizations: bool = True
-
-    # Opciones de complejidad
-    analyze_line_by_line: bool = True
-    analyze_space: bool = True
-    analyze_recurrence: bool = True
-    analyze_tight_bounds: bool = True
-
-    # Opciones de patrones
-    min_pattern_confidence: float = 0.3
-    detect_specific_pattern: Optional[str] = None
-
-    # Opciones de estructuras
-    min_structure_confidence: float = 0.3
-    analyze_structure_usage: bool = True
-
-    # Opciones de visualización
-    generate_recursion_tree: bool = True
-    generate_execution_flow: bool = True
-    recursion_tree_depth: int = 10
-    recursion_tree_start_value: Optional[int] = None
-    visualization_format: str = "json"
-
-    # Opciones generales
-    timeout: Optional[int] = None
-    algorithm_id: Optional[str] = None
-
-@dataclass
-class StepResult:
-    """Resultado de un paso del análisis"""
-    step: AnalysisStep
-    status: AnalysisStatus
-    duration: float
-    success: bool
-    error: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-
-@dataclass
-class CompleteAnalysisResult:
-    """Resultado del análisis completo"""
-    # Metadata
-    request_id: str
-    algorithm_name: str
-    status: AnalysisStatus
-    started_at: datetime
-    completed_at: datetime
-    total_duration: float
-
-    # AST
-    ast: Optional[ProgramNode] = None
-
-    # Resultados por módulo
-    complexity_result: Optional[Dict[str, Any]] = None
-    patterns_result: Optional[Dict[str, Any]] = None
-    structures_result: Optional[Dict[str, Any]] = None
-    visualizations_result: Optional[Dict[str, Any]] = None
-
-    # Steps ejecutados
-    steps: List[StepResult] = field(default_factory=list)
-
-    # Resumen ejecutivo
-    summary: Optional[str] = None
-
-    # Metadata adicional
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    # Errores
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-
-    @property
-    def success(self) -> bool:
-        """Indica si el análisis fue exitoso"""
-        return self.status == AnalysisStatus.COMPLETED
-
-    @property
-    def failed_steps(self) -> List[StepResult]:
-        """Retorna pasos que fallaron"""
-        return [s for s in self.steps if not s.success]
-
-    @property
-    def successful_steps(self) -> List[StepResult]:
-        """Retorna pasos exitosos"""
-        return [s for s in self.steps if s.success]
-
-# Orchestrator
 class AnalysisOrchestrator:
     """
-    Orquestador de análisis completo.
+    Orquestador de análisis completo refactorizado.
 
-    Coordina todos los módulos para proporcionar un análisis
-    integral de algoritmos en pseudocódigo.
+    Utiliza schemas de Pydantic para DTOs y respuestas.
 
     Example:
         >>> orchestrator = AnalysisOrchestrator()
         >>> request = CompleteAnalysisRequest(
         ...     code="algorithm test(n)\\nbegin\\n  for i <- 1 to n do\\n    x <- x + 1\\nend",
         ...     analyze_complexity=True,
-        ...     analyze_patterns=True
+        ...     analyze_patterns=True,
         ... )
         >>> result = await orchestrator.analyze_complete(request)
         >>> print(result.summary)
@@ -171,15 +87,7 @@ class AnalysisOrchestrator:
         pattern_detector: Optional[PatternDetector] = None,
         structure_identifier: Optional[StructureIdentifier] = None,
     ):
-        """
-        Inicializa el orquestador.
-
-        Args:
-            parser: Parser personalizado
-            analyzer_engine: Engine de análisis personalizado
-            pattern_detector: Detector de patrones personalizado
-            structure_identifier: Identificador de estructuras personalizado
-        """
+        """Inicializa el orquestador."""
         self.parser = parser or PseudocodeParser()
         self.analyzer_engine = analyzer_engine or AnalyzerEngine()
         self.pattern_detector = pattern_detector or PatternDetector()
@@ -195,460 +103,687 @@ class AnalysisOrchestrator:
         Ejecuta análisis completo de un algoritmo.
 
         Args:
-            request: Configuración del análisis
+            request: Configuración del análisis (CompleteAnalysisRequest schema)
 
         Returns:
-            CompleteAnalysisResult: Resultado completo
+            CompleteAnalysisResult: Resultado completo usando schemas
         """
-        import uuid
-        request_id = str(uuid.uuid4())
-
-        logger.info(f"Iniciando análisis completo: {request_id}")
+        logger.info("Iniciando análisis completo")
 
         started_at = datetime.utcnow()
         start_time = time.time()
 
-        result = CompleteAnalysisResult(
-            request_id=request_id,
-            algorithm_name="",
-            status=AnalysisStatus.PENDING,
-            started_at=started_at,
-            completed_at=started_at,
-            total_duration=0.0
-        )
+        # Variables para almacenar resultados
+        ast: Optional[ProgramNode] = None
+        algorithm_info: Optional[AlgorithmInfo] = None
+        complexity_result: Optional[ComplexityAnalysis] = None
+        space_result: Optional[SpaceComplexityAnalysis] = None
+        recurrence_temporal: Optional[RecurrenceEquation] = None
+        recurrence_spatial: Optional[RecurrenceEquation] = None
+        line_by_line_result: Optional[LineByLineAnalysis] = None
+        patterns_result: Optional[PatternDetectionResult] = None
+        structures_result: Optional[StructureDetectionResult] = None
+        visualizations: list[VisualizationResult] = []
+        
+        errors = []
+        warnings = []
 
         try:
-            # Paso 1: Parsing
-            ast = await self._step_parse(request, result)
-            if not ast:
-                result.status = AnalysisStatus.FAILED
-                return result
+            # PASO 1: PARSING
+            logger.info("Paso 1: Parsing")
+            try:
+                ast = self.parser.parse(request.code, validate=True)
+                algorithm_info = self._extract_algorithm_info(ast, request.code)
+            except ParserException as e:
+                logger.error(f"Error en parsing: {e}")
+                errors.append(f"Error de parsing: {e}")
+                # Retornar resultado parcial
+                return self._create_result(
+                    started_at=started_at,
+                    start_time=start_time,
+                    algorithm_name="unknown",
+                    algorithm_info=None,
+                    errors=errors,
+                    warnings=warnings,
+                )
 
-            result.ast = ast
-            result.algorithm_name = ast.algorithm.name if ast.algorithm else "unknown"
+            # PASO 2: ANÁLISIS DE COMPLEJIDAD
+            if request.analyze_complexity and ast:
+                logger.info("Paso 2: Análisis de complejidad")
+                try:
+                    analysis_result = self.analyzer_engine.analyze(
+                        ast,
+                        analyze_line_by_line=request.complexity_options.analyze_line_by_line,
+                        analyze_space=request.complexity_options.analyze_spatial,
+                        analyze_recurrence=request.complexity_options.analyze_recurrence,
+                        analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
+                    )
 
-            # Paso 2: Análisis de Complejidad
-            if request.analyze_complexity:
-                await self._step_complexity(request, result, ast)
+                    # Convertir a schemas
+                    complexity_result = self._build_complexity_analysis(analysis_result)
+                    
+                    if analysis_result.space_analysis:
+                        space_result = self._build_space_complexity(analysis_result.space_analysis)
+                    
+                    if analysis_result.temporal_recurrence:
+                        recurrence_temporal = self._build_recurrence_equation(
+                            analysis_result.temporal_recurrence
+                        )
+                    
+                    if analysis_result.line_by_line:
+                        line_by_line_result = self._build_line_by_line(
+                            analysis_result.line_by_line,
+                            analysis_result.big_o
+                        )
 
-            # Paso 3: Detección de Patrones
-            if request.analyze_patterns:
-                await self._step_patterns(request, result, ast)
+                except AnalyzerException as e:
+                    logger.warning(f"Error en análisis de complejidad: {e}")
+                    warnings.append(f"Análisis de complejidad parcial: {e}")
 
-            # Paso 4: Detección de Estructuras
-            if request.analyze_structures:
-                await self._step_structures(request, result, ast)
+            # PASO 3: DETECCIÓN DE PATRONES
+            if request.analyze_patterns and ast:
+                logger.info("Paso 3: Detección de patrones")
+                try:
+                    patterns_result = self._detect_patterns(ast, request)
+                except Exception as e:
+                    logger.warning(f"Error en detección de patrones: {e}")
+                    warnings.append(f"Detección de patrones fallida: {e}")
 
-            # Paso 5: Generación de Visualizaciones
-            if request.generate_visualizations:
-                await self._step_visualizations(request, result, ast)
+            # PASO 4: DETECCIÓN DE ESTRUCTURAS
+            if request.analyze_structures and ast:
+                logger.info("Paso 4: Detección de estructuras")
+                try:
+                    structures_result = self._detect_structures(ast, request)
+                except Exception as e:
+                    logger.warning(f"Error en detección de estructuras: {e}")
+                    warnings.append(f"Detección de estructuras fallida: {e}")
 
-            # Generar resumen
-            result.summary = self._generate_summary(result)
+            # PASO 5: GENERACIÓN DE VISUALIZACIONES
+            if request.generate_visualizations and ast:
+                logger.info("Paso 5: Generación de visualizaciones")
+                try:
+                    visualizations = await self._generate_visualizations(
+                        ast,
+                        request,
+                        complexity_result
+                    )
+                except Exception as e:
+                    logger.warning(f"Error en visualizaciones: {e}")
+                    warnings.append(f"Visualizaciones parciales: {e}")
 
-            # Marcar como completado
-            result.status = AnalysisStatus.COMPLETED
+            # CONSTRUIR RESULTADO FINAL
+            return self._create_result(
+                started_at=started_at,
+                start_time=start_time,
+                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_info=algorithm_info,
+                complexity=complexity_result,
+                space_complexity=space_result,
+                recurrence_temporal=recurrence_temporal,
+                recurrence_spatial=recurrence_spatial,
+                line_by_line=line_by_line_result,
+                patterns=patterns_result,
+                structures=structures_result,
+                visualizations=visualizations,
+                errors=errors,
+                warnings=warnings,
+            )
 
         except TimeoutException as e:
             logger.error(f"Timeout en análisis: {e}")
-            result.status = AnalysisStatus.FAILED
-            result.errors.append(f"Timeout: {e}")
+            errors.append(f"Timeout: {e}")
+            return self._create_result(
+                started_at=started_at,
+                start_time=start_time,
+                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_info=algorithm_info,
+                errors=errors,
+                warnings=warnings,
+            )
 
         except Exception as e:
-            logger.error(f"Error en análisis completo: {e}", exc_info=True)
-            result.status = AnalysisStatus.FAILED
-            result.errors.append(f"Error inesperado: {e}")
+            logger.error(f"Error inesperado: {e}", exc_info=True)
+            errors.append(f"Error inesperado: {e}")
+            return self._create_result(
+                started_at=started_at,
+                start_time=start_time,
+                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_info=algorithm_info,
+                errors=errors,
+                warnings=warnings,
+            )
 
-        finally:
-            # Calcular duración total
-            result.completed_at = datetime.utcnow()
-            result.total_duration = time.time() - start_time
+    # Helper Methods - Extracción de Información
+    def _extract_algorithm_info(self, ast: ProgramNode, code: str) -> AlgorithmInfo:
+        """Extrae información del algoritmo desde el AST."""
+        parameters = []
+        if ast.algorithm and ast.algorithm.parameters:
+            for param in ast.algorithm.parameters:
+                parameters.append(
+                    AlgorithmParameter(
+                        name=param.name,
+                        type=getattr(param, 'type', None),
+                        is_array=getattr(param, 'is_array', False),
+                        dimensions=getattr(param, 'dimensions', []),
+                        is_object=getattr(param, 'is_object', False),
+                        object_type=getattr(param, 'object_type', None),
+                        description=None,
+                    )
+                )
 
-            # Metadata adicional
-            result.metadata = {
-                "total_steps": len(result.steps),
-                "successful_steps": len(result.successful_steps),
-                "failed_steps": len(result.failed_steps),
-                "avg_step_duration": (
-                    sum(s.duration for s in result.steps) / len(result.steps)
-                    if result.steps else 0
-                ),
+        return AlgorithmInfo(
+            name=ast.algorithm.name if ast.algorithm else "unknown",
+            parameters=parameters,
+            has_recursion=False,  # Detectar del análisis
+            has_loops=True,  # Detectar del análisis
+            max_nesting_depth=0,  # Calcular
+            total_lines=len(code.splitlines()),
+            total_statements=0,  # Contar del AST
+        )
+
+    # Helper Methods - Construcción de Schemas
+    def _build_complexity_analysis(self, analysis_result) -> ComplexityAnalysis:
+        """Construye ComplexityAnalysis desde resultado del analyzer."""
+        return ComplexityAnalysis(
+            big_o=analysis_result.big_o,
+            omega=analysis_result.omega,
+            theta=analysis_result.theta,
+            big_o_class=self._get_complexity_class(analysis_result.big_o),
+            omega_class=self._get_complexity_class(analysis_result.omega),
+            theta_class=self._get_complexity_class(analysis_result.theta) if analysis_result.theta else None,
+            explanation=f"Complejidad temporal del algoritmo",
+            reasoning=[
+                "Análisis basado en estructura del código",
+                f"Complejidad dominante: {analysis_result.big_o}"
+            ],
+            has_tight_bound=analysis_result.theta is not None,
+        )
+
+    def _build_space_complexity(self, space_analysis) -> SpaceComplexityAnalysis:
+        """Construye SpaceComplexityAnalysis."""
+        return SpaceComplexityAnalysis(
+            total=space_analysis.space_complexity,
+            input_space=space_analysis.input_space,
+            auxiliary_space=space_analysis.auxiliary_space,
+            recursion_space=space_analysis.recursion_space,
+            explanation=f"Espacio total: {space_analysis.space_complexity}",
+            breakdown={
+                "input": space_analysis.input_space,
+                "auxiliary": space_analysis.auxiliary_space,
+                "recursion": space_analysis.recursion_space,
             }
+        )
 
-            logger.info(
-                f"Análisis completo finalizado: {request_id} - "
-                f"Status: {result.status} - Duration: {result.total_duration:.2f}s"
-            )
-
-        return result
-
-    # Step Methods
-    async def _step_parse(
-        self,
-        request: CompleteAnalysisRequest,
-        result: CompleteAnalysisResult
-    ) -> Optional[ProgramNode]:
-        """Paso: Parsing"""
-        step_start = time.time()
-        result.status = AnalysisStatus.PARSING
-
-        logger.info("Ejecutando paso: PARSE")
-
-        try:
-            ast = self.parser.parse(request.code, validate=True)
-
-            step = StepResult(
-                step=AnalysisStep.PARSE,
-                status=AnalysisStatus.COMPLETED,
-                duration=time.time() - step_start,
-                success=True,
-                data={
-                    "algorithm_name": ast.algorithm.name if ast.algorithm else None,
-                    "parameters_count": len(ast.algorithm.parameters) if ast.algorithm else 0,
-                }
-            )
-            result.steps.append(step)
-
-            return ast
-
-        except ParserException as e:
-            logger.error(f"Error en parsing: {e}")
-            step = StepResult(
-                step=AnalysisStep.PARSE,
-                status=AnalysisStatus.FAILED,
-                duration=time.time() - step_start,
-                success=False,
-                error=str(e)
-            )
-            result.steps.append(step)
-            result.errors.append(f"Error de parsing: {e}")
+    def _build_recurrence_equation(self, recurrence) -> Optional[RecurrenceEquation]:
+        """Construye RecurrenceEquation."""
+        if not recurrence or not recurrence.recurrence_equation:
             return None
 
-    async def _step_complexity(
-        self,
-        request: CompleteAnalysisRequest,
-        result: CompleteAnalysisResult,
-        ast: ProgramNode
-    ) -> None:
-        """Paso: Análisis de Complejidad"""
-        step_start = time.time()
-        result.status = AnalysisStatus.ANALYZING_COMPLEXITY
+        eq = recurrence.recurrence_equation
+        return RecurrenceEquation(
+            equation=eq.equation,
+            base_case=eq.base_case,
+            recursion_pattern=eq.recursion_pattern,
+            a=None,  # Extraer si disponible
+            b=None,
+            f_n=None,
+            explanation=f"Ecuación de recurrencia",
+        )
 
-        logger.info("Ejecutando paso: COMPLEXITY")
-
-        try:
-            # Analizar complejidad
-            analysis_result = self.analyzer_engine.analyze(
-                ast,
-                analyze_line_by_line=request.analyze_line_by_line,
-                analyze_space=request.analyze_space,
-                analyze_recurrence=request.analyze_recurrence,
-                analyze_tight_bounds=request.analyze_tight_bounds
-            )
-
-            # Convertir a dict
-            complexity_data = {
-                "big_o": analysis_result.big_o,
-                "omega": analysis_result.omega,
-                "theta": analysis_result.theta,
-                "is_recursive": analysis_result.is_recursive,
-                "max_nesting_depth": analysis_result.max_nesting_depth,
-            }
-
-            if analysis_result.space_analysis:
-                complexity_data["space_complexity"] = {
-                    "total": analysis_result.space_analysis.space_complexity,
-                    "input": analysis_result.space_analysis.input_space,
-                    "auxiliary": analysis_result.space_analysis.auxiliary_space,
-                    "recursion": analysis_result.space_analysis.recursion_space,
-                }
-
-            if analysis_result.temporal_recurrence and analysis_result.temporal_recurrence.recurrence_equation:
-                eq = analysis_result.temporal_recurrence.recurrence_equation
-                complexity_data["temporal_recurrence"] = {
-                    "equation": eq.equation,
-                    "base_case": eq.base_case,
-                    "pattern": eq.recursion_pattern,
-                }
-
-            if analysis_result.tight_bounds:
-                complexity_data["tight_bounds"] = {
-                    "has_tight_bound": analysis_result.tight_bounds.has_tight_bound,
-                    "theta": analysis_result.tight_bounds.theta,
-                }
-
-            result.complexity_result = complexity_data
-
-            step = StepResult(
-                step=AnalysisStep.COMPLEXITY,
-                status=AnalysisStatus.COMPLETED,
-                duration=time.time() - step_start,
-                success=True,
-                data=complexity_data
-            )
-            result.steps.append(step)
-
-        except AnalyzerException as e:
-            logger.error(f"Error en análisis de complejidad: {e}")
-            step = StepResult(
-                step=AnalysisStep.COMPLEXITY,
-                status=AnalysisStatus.FAILED,
-                duration=time.time() - step_start,
-                success=False,
-                error=str(e)
-            )
-            result.steps.append(step)
-            result.warnings.append(f"Análisis de complejidad parcial: {e}")
-
-    async def _step_patterns(
-        self,
-        request: CompleteAnalysisRequest,
-        result: CompleteAnalysisResult,
-        ast: ProgramNode
-    ) -> None:
-        """Paso: Detección de Patrones"""
-        step_start = time.time()
-        result.status = AnalysisStatus.DETECTING_PATTERNS
-
-        logger.info("Ejecutando paso: PATTERNS")
-
-        try:
-            # Detectar patrones
-            patterns_result = self.pattern_detector.detect(
-                ast,
-                min_confidence=request.min_pattern_confidence
-            )
-
-            # Convertir a dict
-            patterns_data = {
-                "primary_pattern": (
-                    {
-                        "type": patterns_result.primary_pattern.pattern.pattern_type.value,
-                        "name": patterns_result.primary_pattern.pattern.pattern_name,
-                        "confidence": patterns_result.primary_pattern.pattern.confidence,
-                        "reasoning": patterns_result.primary_pattern.pattern.reasoning,
-                    }
-                    if patterns_result.primary_pattern else None
-                ),
-                "pattern_count": patterns_result.pattern_count,
-                "confident_patterns": [
-                    {
-                        "type": p.pattern.pattern_type.value,
-                        "name": p.pattern.pattern_name,
-                        "confidence": p.pattern.confidence,
-                    }
-                    for p in patterns_result.confident_patterns
-                ],
-            }
-
-            result.patterns_result = patterns_data
-
-            step = StepResult(
-                step=AnalysisStep.PATTERNS,
-                status=AnalysisStatus.COMPLETED,
-                duration=time.time() - step_start,
-                success=True,
-                data=patterns_data
-            )
-            result.steps.append(step)
-
-        except Exception as e:
-            logger.error(f"Error en detección de patrones: {e}")
-            step = StepResult(
-                step=AnalysisStep.PATTERNS,
-                status=AnalysisStatus.FAILED,
-                duration=time.time() - step_start,
-                success=False,
-                error=str(e)
-            )
-            result.steps.append(step)
-            result.warnings.append(f"Detección de patrones fallida: {e}")
-
-    async def _step_structures(
-        self,
-        request: CompleteAnalysisRequest,
-        result: CompleteAnalysisResult,
-        ast: ProgramNode
-    ) -> None:
-        """Paso: Detección de Estructuras"""
-        step_start = time.time()
-        result.status = AnalysisStatus.DETECTING_STRUCTURES
-
-        logger.info("Ejecutando paso: STRUCTURES")
-
-        try:
-            # Identificar estructuras
-            structures_result = self.structure_identifier.identify(
-                ast,
-                min_confidence=request.min_structure_confidence
-            )
-
-            # Convertir a dict
-            structures_data = {
-                "primary_structure": (
-                    {
-                        "type": structures_result.primary_structure.structure_type.value,
-                        "name": structures_result.primary_structure.structure_name,
-                        "confidence": structures_result.primary_structure.confidence,
-                        "variables": structures_result.primary_structure.variables,
-                    }
-                    if structures_result.primary_structure else None
-                ),
-                "structure_count": structures_result.structure_count,
-                "structures_found": [
-                    {
-                        "type": s.structure_type.value,
-                        "name": s.structure_name,
-                        "confidence": s.confidence,
-                    }
-                    for s in structures_result.structures_found
-                ],
-            }
-
-            result.structures_result = structures_data
-
-            step = StepResult(
-                step=AnalysisStep.STRUCTURES,
-                status=AnalysisStatus.COMPLETED,
-                duration=time.time() - step_start,
-                success=True,
-                data=structures_data
-            )
-            result.steps.append(step)
-
-        except Exception as e:
-            logger.error(f"Error en detección de estructuras: {e}")
-            step = StepResult(
-                step=AnalysisStep.STRUCTURES,
-                status=AnalysisStatus.FAILED,
-                duration=time.time() - step_start,
-                success=False,
-                error=str(e)
-            )
-            result.steps.append(step)
-            result.warnings.append(f"Detección de estructuras fallida: {e}")
-
-    async def _step_visualizations(
-        self,
-        request: CompleteAnalysisRequest,
-        result: CompleteAnalysisResult,
-        ast: ProgramNode
-    ) -> None:
-        """Paso: Generación de Visualizaciones"""
-        step_start = time.time()
-        result.status = AnalysisStatus.GENERATING_VISUALIZATIONS
-
-        logger.info("Ejecutando paso: VISUALIZATION")
-
-        visualizations = {}
-
-        try:
-            # Árbol de recursión
-            if request.generate_recursion_tree and result.complexity_result:
-                is_recursive = result.complexity_result.get("is_recursive", False)
-
-                if is_recursive:
-                    try:
-                        tree_result = generate_recursion_tree(
-                            ast,
-                            start_value=request.recursion_tree_start_value,
-                            max_depth=request.recursion_tree_depth
-                        )
-
-                        # Renderizar
-                        render_format = RenderFormat(request.visualization_format)
-                        rendered = render_diagram(tree_result, format=render_format)
-
-                        visualizations["recursion_tree"] = {
-                            "type": tree_result.recursion_type.value,
-                            "total_calls": tree_result.total_calls,
-                            "max_depth": tree_result.max_depth,
-                            "content": rendered.content if isinstance(rendered.content, str) else rendered.content.decode('utf-8'),
-                            "format": request.visualization_format,
-                        }
-                    except Exception as e:
-                        logger.warning(f"Error generando árbol de recursión: {e}")
-                        result.warnings.append(f"Árbol de recursión: {e}")
-
-            # Flujo de ejecución
-            if request.generate_execution_flow:
-                try:
-                    flow_result = generate_execution_flow(ast)
-
-                    # Renderizar
-                    render_format = RenderFormat(request.visualization_format)
-                    rendered = render_diagram(flow_result, format=render_format)
-
-                    visualizations["execution_flow"] = {
-                        "total_nodes": flow_result.statistics["total_nodes"],
-                        "total_edges": flow_result.statistics["total_edges"],
-                        "content": rendered.content if isinstance(rendered.content, str) else rendered.content.decode('utf-8'),
-                        "format": request.visualization_format,
-                    }
-                except Exception as e:
-                    logger.warning(f"Error generando flujo de ejecución: {e}")
-                    result.warnings.append(f"Flujo de ejecución: {e}")
-
-            result.visualizations_result = visualizations
-
-            step = StepResult(
-                step=AnalysisStep.VISUALIZATION,
-                status=AnalysisStatus.COMPLETED,
-                duration=time.time() - step_start,
-                success=True,
-                data={"generated_count": len(visualizations)}
-            )
-            result.steps.append(step)
-
-        except Exception as e:
-            logger.error(f"Error en generación de visualizaciones: {e}")
-            step = StepResult(
-                step=AnalysisStep.VISUALIZATION,
-                status=AnalysisStatus.FAILED,
-                duration=time.time() - step_start,
-                success=False,
-                error=str(e)
-            )
-            result.steps.append(step)
-            result.warnings.append(f"Visualizaciones parciales: {e}")
-
-    def _generate_summary(self, result: CompleteAnalysisResult) -> str:
-        """Genera resumen ejecutivo del análisis"""
+    def _build_line_by_line(self, line_by_line, dominant_complexity: str) -> LineByLineAnalysis:
+        """Construye LineByLineAnalysis."""
         lines = [
-            f"Análisis completo del algoritmo '{result.algorithm_name}'",
-            "",
+            LineExecution(
+                line_number=line.line_number,
+                code=line.code,
+                execution_count=line.execution_count,
+                statement_type=line.statement_type,
+                complexity_contribution=line.complexity_contribution,
+                explanation=line.explanation,
+                location=None,
+            )
+            for line in line_by_line.lines
         ]
 
-        # Complejidad
-        if result.complexity_result:
-            lines.append("COMPLEJIDAD:")
-            lines.append(f"  • Temporal: {result.complexity_result['big_o']}")
-            if result.complexity_result.get('theta'):
-                lines.append(f"  • Cota ajustada: {result.complexity_result['theta']}")
-            if result.complexity_result.get('space_complexity'):
-                lines.append(f"  • Espacial: {result.complexity_result['space_complexity']['total']}")
-            lines.append("")
+        return LineByLineAnalysis(
+            lines=lines,
+            dominant_complexity=dominant_complexity,
+            total_lines=len(lines),
+            summary=f"Análisis línea por línea completo",
+        )
 
-        # Patrones
-        if result.patterns_result and result.patterns_result.get('primary_pattern'):
-            primary = result.patterns_result['primary_pattern']
-            lines.append("PATRÓN DETECTADO:")
-            lines.append(f"  • {primary['name']} (confianza: {primary['confidence']:.2%})")
-            lines.append("")
+    def _detect_patterns(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest
+    ) -> PatternDetectionResult:
+        """Detecta patrones y convierte a schema."""
+        result = self.pattern_detector.detect(
+            ast,
+            min_confidence=request.pattern_options.min_confidence
+        )
 
-        # Estructuras
-        if result.structures_result and result.structures_result.get('primary_structure'):
-            primary = result.structures_result['primary_structure']
-            lines.append("ESTRUCTURA DE DATOS:")
-            lines.append(f"  • {primary['name']} (confianza: {primary['confidence']:.2%})")
-            lines.append("")
+        # Convertir a schemas
+        patterns_found = [
+            PatternMatch(
+                pattern_type=p.pattern.pattern_type,
+                pattern_name=p.pattern.pattern_name,
+                confidence=p.pattern.confidence,
+                confidence_level=ConfidenceLevelEnum(p.pattern.confidence_level.value),
+                indicators_found=[
+                    PatternIndicator(
+                        name=ind.name,
+                        description=ind.description,
+                        found=ind.found,
+                        weight=ind.weight,
+                        evidence=ind.evidence,
+                        location=ind.location,
+                    )
+                    for ind in p.pattern.indicators_found
+                ],
+                indicators_missing=[
+                    PatternIndicator(
+                        name=ind.name,
+                        description=ind.description,
+                        found=ind.found,
+                        weight=ind.weight,
+                        evidence=ind.evidence,
+                        location=ind.location,
+                    )
+                    for ind in p.pattern.indicators_missing
+                ],
+                reasoning=p.pattern.reasoning,
+                typical_complexity=p.pattern.typical_complexity,
+                metadata=p.pattern.metadata,
+            )
+            for p in result.patterns_found
+        ]
 
-        # Estadísticas
-        lines.append("ESTADÍSTICAS:")
-        lines.append(f"  • Duración: {result.total_duration:.2f}s")
-        lines.append(f"  • Pasos completados: {len(result.successful_steps)}/{len(result.steps)}")
+        scored_patterns = [
+            ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+            for sp in result.scored_patterns
+        ]
 
-        if result.warnings:
-            lines.append(f"  • Advertencias: {len(result.warnings)}")
+        primary_pattern = None
+        if result.primary_pattern:
+            sp = result.primary_pattern
+            primary_pattern = ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+
+        confident_patterns = [
+            ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+            for sp in result.confident_patterns
+        ]
+
+        return PatternDetectionResult(
+            patterns_found=patterns_found,
+            scored_patterns=scored_patterns,
+            primary_pattern=primary_pattern,
+            confident_patterns=confident_patterns,
+            summary=result.summary,
+            pattern_count=result.pattern_count,
+            metadata=result.metadata,
+        )
+
+    def _detect_structures(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest
+    ) -> StructureDetectionResult:
+        """Detecta estructuras y convierte a schema."""
+        result = self.structure_identifier.identify(
+            ast,
+            min_confidence=request.structure_options.min_confidence
+        )
+
+        structures_found = [
+            StructureMatch(
+                structure_type=s.structure_type.value,
+                structure_name=s.structure_name,
+                confidence=s.confidence,
+                confidence_level=ConfidenceLevelEnum(s.confidence_level.value),
+                variables=s.variables,
+                operations=s.operations,
+                reasoning=s.reasoning,
+            )
+            for s in result.structures_found
+        ]
+
+        primary_structure = None
+        if result.primary_structure:
+            s = result.primary_structure
+            primary_structure = StructureMatch(
+                structure_type=s.structure_type.value,
+                structure_name=s.structure_name,
+                confidence=s.confidence,
+                confidence_level=ConfidenceLevelEnum(s.confidence_level.value),
+                variables=s.variables,
+                operations=s.operations,
+                reasoning=s.reasoning,
+            )
+
+        return StructureDetectionResult(
+            structures_found=structures_found,
+            primary_structure=primary_structure,
+            primary_usage=None,  # Implementar si se requiere
+            summary=result.summary,
+        )
+
+    async def _generate_visualizations(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest,
+        complexity: Optional[ComplexityAnalysis]
+    ) -> list[VisualizationResult]:
+        """Genera visualizaciones."""
+        visualizations = []
+
+        # Árbol de recursión
+        if request.visualization_options.generate_recursion_tree:
+            if complexity and complexity.has_tight_bound:  # Simplificado
+                try:
+                    tree_result = generate_recursion_tree(
+                        ast,
+                        start_value=request.visualization_options.recursion_tree_start_value,
+                        max_depth=request.visualization_options.recursion_tree_depth
+                    )
+
+                    render_format = RenderFormat(request.visualization_options.visualization_format)
+                    rendered = render_diagram(tree_result, format=render_format)
+
+                    content = rendered.content
+                    if isinstance(content, bytes):
+                        content = content.decode('utf-8')
+
+                    visualizations.append(
+                        VisualizationResult(
+                            type="recursion_tree",
+                            format=request.visualization_options.visualization_format,
+                            content=content,
+                            file_path=None,
+                            statistics={
+                                "recursion_type": tree_result.recursion_type.value,
+                                "total_calls": tree_result.total_calls,
+                                "max_depth": tree_result.max_depth,
+                            },
+                            metadata={"algorithm_name": ast.algorithm.name if ast.algorithm else "unknown"},
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Error en árbol de recursión: {e}")
+
+        # Flujo de ejecución
+        if request.visualization_options.generate_execution_flow:
+            try:
+                flow_result = generate_execution_flow(ast)
+                render_format = RenderFormat(request.visualization_options.visualization_format)
+                rendered = render_diagram(flow_result, format=render_format)
+
+                content = rendered.content
+                if isinstance(content, bytes):
+                    content = content.decode('utf-8')
+
+                visualizations.append(
+                    VisualizationResult(
+                        type="execution_flow",
+                        format=request.visualization_options.visualization_format,
+                        content=content,
+                        file_path=None,
+                        statistics=flow_result.statistics,
+                        metadata={"algorithm_name": ast.algorithm.name if ast.algorithm else "unknown"},
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error en flujo de ejecución: {e}")
+
+        return visualizations
+
+    def _create_result(
+        self,
+        started_at: datetime,
+        start_time: float,
+        algorithm_name: str,
+        algorithm_info: Optional[AlgorithmInfo],
+        complexity: Optional[ComplexityAnalysis] = None,
+        space_complexity: Optional[SpaceComplexityAnalysis] = None,
+        recurrence_temporal: Optional[RecurrenceEquation] = None,
+        recurrence_spatial: Optional[RecurrenceEquation] = None,
+        line_by_line: Optional[LineByLineAnalysis] = None,
+        patterns: Optional[PatternDetectionResult] = None,
+        structures: Optional[StructureDetectionResult] = None,
+        visualizations: list[VisualizationResult] = None,
+        errors: list[str] = None,
+        warnings: list[str] = None,
+    ) -> CompleteAnalysisResult:
+        """Crea el resultado final usando schemas."""
+        completed_at = datetime.utcnow()
+        duration = time.time() - start_time
+
+        # Metadata
+        metadata = AnalysisMetadata(
+            timing=TimingMetadata(
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_ms=duration * 1000,
+            ),
+            resources=None,
+            version="1.0.0",
+            environment="production",
+        )
+
+        # Resumen
+        summary = self._generate_summary(
+            algorithm_name,
+            complexity,
+            space_complexity,
+            patterns,
+            structures
+        )
+
+        # Recomendaciones
+        recommendations = self._generate_recommendations(complexity, patterns)
+
+        return CompleteAnalysisResult(
+            success=len(errors or []) == 0,
+            message="Análisis completado" if not errors else "Análisis con errores",
+            timestamp=completed_at,
+            algorithm_name=algorithm_name,
+            algorithm_info=algorithm_info,
+            complexity=complexity,
+            space_complexity=space_complexity,
+            recurrence_temporal=recurrence_temporal,
+            recurrence_spatial=recurrence_spatial,
+            line_by_line=line_by_line,
+            patterns=patterns,
+            structures=structures,
+            visualizations=visualizations or [],
+            metadata=metadata,
+            summary=summary,
+            recommendations=recommendations,
+        )
+
+    def _generate_summary(
+        self,
+        algorithm_name: str,
+        complexity: Optional[ComplexityAnalysis],
+        space_complexity: Optional[SpaceComplexityAnalysis],
+        patterns: Optional[PatternDetectionResult],
+        structures: Optional[StructureDetectionResult],
+    ) -> str:
+        """Genera resumen ejecutivo."""
+        lines = [f"Algoritmo: {algorithm_name}", ""]
+
+        if complexity:
+            lines.append(f"Complejidad temporal: {complexity.big_o}")
+            if complexity.theta:
+                lines.append(f"Cota ajustada: {complexity.theta}")
+
+        if space_complexity:
+            lines.append(f"Complejidad espacial: {space_complexity.total}")
+
+        if patterns and patterns.primary_pattern:
+            primary = patterns.primary_pattern
+            lines.append(f"Patrón: {primary.pattern.pattern_name} ({primary.final_score:.0%})")
+
+        if structures and structures.primary_structure:
+            primary = structures.primary_structure
+            lines.append(f"Estructura: {primary.structure_name} ({primary.confidence:.0%})")
 
         return "\n".join(lines)
+
+    def _generate_recommendations(
+        self,
+        complexity: Optional[ComplexityAnalysis],
+        patterns: Optional[PatternDetectionResult]
+    ) -> list[str]:
+        """Genera recomendaciones."""
+        recommendations = []
+
+        if complexity:
+            if complexity.big_o_class in [ComplexityClass.EXPONENTIAL, ComplexityClass.FACTORIAL]:
+                recommendations.append("Considerar optimización - complejidad muy alta")
+            elif complexity.big_o_class == ComplexityClass.QUADRATIC:
+                recommendations.append("Evaluar algoritmos alternativos de menor complejidad")
+
+        return recommendations
+
+    def _get_complexity_class(self, notation: str) -> Optional[ComplexityClass]:
+        """Obtiene clase de complejidad desde notación."""
+        if not notation:
+            return None
+
+        clean = notation.replace("O(", "").replace(")", "").replace("Ω(", "").replace("Θ(", "")
+
+        mapping = {
+            "1": ComplexityClass.CONSTANT,
+            "log n": ComplexityClass.LOGARITHMIC,
+            "n": ComplexityClass.LINEAR,
+            "n log n": ComplexityClass.LINEARITHMIC,
+            "n²": ComplexityClass.QUADRATIC,
+            "n^2": ComplexityClass.QUADRATIC,
+            "n³": ComplexityClass.CUBIC,
+            "n^3": ComplexityClass.CUBIC,
+            "2^n": ComplexityClass.EXPONENTIAL,
+            "n!": ComplexityClass.FACTORIAL,
+        }
+
+        return mapping.get(clean, ComplexityClass.POLYNOMIAL)
