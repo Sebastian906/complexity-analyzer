@@ -137,12 +137,20 @@ class AnalysisOrchestrator:
             except ParserException as e:
                 logger.error(f"Error en parsing: {e}")
                 errors.append(f"Error de parsing: {e}")
-                # Retornar resultado parcial
+                # PROBLEMA: Retorna INMEDIATAMENTE sin intentar el análisis
                 return self._create_result(
                     started_at=started_at,
                     start_time=start_time,
                     algorithm_name="unknown",
-                    algorithm_info=None,
+                    algorithm_info=AlgorithmInfo(  # DEBE crear un placeholder
+                        name="unknown",
+                        parameters=[],
+                        has_recursion=False,
+                        has_loops=False,
+                        max_nesting_depth=0,
+                        total_lines=0,
+                        total_statements=0
+                    ),
                     errors=errors,
                     warnings=warnings,
                 )
@@ -159,26 +167,37 @@ class AnalysisOrchestrator:
                         analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
                     )
 
-                    # Convertir a schemas
-                    complexity_result = self._build_complexity_analysis(analysis_result)
-                    
-                    if analysis_result.space_analysis:
-                        space_result = self._build_space_complexity(analysis_result.space_analysis)
-                    
-                    if analysis_result.temporal_recurrence:
-                        recurrence_temporal = self._build_recurrence_equation(
-                            analysis_result.temporal_recurrence
-                        )
-                    
-                    if analysis_result.line_by_line:
-                        line_by_line_result = self._build_line_by_line(
-                            analysis_result.line_by_line,
-                            analysis_result.big_o
-                        )
+                    # VERIFICAR QUE analysis_result NO SEA NONE
+                    if analysis_result is None:
+                        logger.error("AnalyzerEngine retornó None")
+                        errors.append("Analyzer retornó resultado nulo")
+                    else:
+                        # Convertir a schemas
+                        complexity_result = self._build_complexity_analysis(analysis_result)
+                        
+                        if analysis_result.space_analysis:
+                            space_result = self._build_space_complexity(analysis_result.space_analysis)
+                        
+                        if analysis_result.temporal_recurrence:
+                            recurrence_temporal = self._build_recurrence_equation(
+                                analysis_result.temporal_recurrence
+                            )
+                        
+                        if analysis_result.line_by_line:
+                            line_by_line_result = self._build_line_by_line(
+                                analysis_result.line_by_line,
+                                analysis_result.big_o
+                            )
 
                 except AnalyzerException as e:
                     logger.warning(f"Error en análisis de complejidad: {e}")
                     warnings.append(f"Análisis de complejidad parcial: {e}")
+                    # NO SE ESTÁ AGREGANDO A errors, SOLO A warnings
+                    # Por eso result.success puede ser True pero complexity es None
+                except Exception as e:
+                    # CAPTURAR CUALQUIER OTRO ERROR
+                    logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
+                    errors.append(f"Error en análisis: {e}")
 
             # PASO 3: DETECCIÓN DE PATRONES
             if request.analyze_patterns and ast:
@@ -677,6 +696,17 @@ class AnalysisOrchestrator:
         """Crea el resultado final usando schemas."""
         completed_at = datetime.utcnow()
         duration = time.time() - start_time
+
+        # AGREGAR VALIDACIÓN:
+        if errors is None:
+            errors = []
+        if warnings is None:
+            warnings = []
+        
+        # Si no hay errores pero tampoco hay complexity, investigar
+        if not errors and complexity is None:
+            logger.warning("No hay errores pero complexity es None - posible fallo silencioso")
+            errors.append("Análisis de complejidad no completado")
 
         # Metadata
         metadata = AnalysisMetadata(

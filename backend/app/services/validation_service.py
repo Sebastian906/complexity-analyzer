@@ -161,7 +161,11 @@ class ValidationService:
             await self._validate_structural(request, result)
 
         # Nivel 4: Best Practices (opcional)
-        if request.check_best_practices:
+        # LÍNEA PROBLEMÁTICA (línea ~164):
+        # if request.check_best_practices:
+        
+        # REEMPLAZAR CON:
+        if request.level == ValidationLevel.COMPLETE:
             await self._validate_best_practices(request, result)
 
         logger.info(

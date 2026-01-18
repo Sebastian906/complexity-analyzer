@@ -200,14 +200,21 @@ class AlgorithmService:
             except Exception as e:
                 raise ValidationException(f"Código inválido: {e}")
 
-        # Actualizar campos
+        # LÍNEA PROBLEMÁTICA (aprox. línea 169):
+        # updated_algorithm = Algorithm(
+        #     ...
+        #     language=request.language if request.language is not None else existing.language,
+        #     ...
+        # )
+        
+        # REEMPLAZAR CON (usar getattr para manejar None):
         updated_algorithm = Algorithm(
             id=existing.id,
             name=request.name if request.name is not None else existing.name,
             description=request.description if request.description is not None else existing.description,
             category=request.category if request.category is not None else existing.category,
-            tags=request.tags if request.tags is not None else existing.tags,
-            language=request.language if request.language is not None else existing.language,
+            tags=getattr(request, 'tags', None) if getattr(request, 'tags', None) is not None else existing.tags,
+            language=getattr(request, 'language', None) if getattr(request, 'language', None) is not None else existing.language,
             code=new_code,
             info=new_info,
             created_at=existing.created_at,
