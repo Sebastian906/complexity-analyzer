@@ -6,97 +6,39 @@ Endpoints REST para detectar patrones algorítmicos en pseudocódigo.
 
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from app.schemas import (
+    # Pattern Request Schemas
+    PatternDetectionRequest,
+    PatternDetectionOptions,
+    
+    # Pattern Result Schemas
+    PatternDetectionResult,
+    PatternMatch,
+    ScoredPattern,
+    PatternIndicator,
+    PatternStatistics,
+    PatternComparison,
+    PatternRecommendation,
+    
+    # Pattern Enums
+    PatternType,
+    
+    # Common
+    BaseResponse,
+    ConfidenceLevelEnum,
+)
 
 from app.core.parser import PseudocodeParser
-from app.core.patterns import PatternDetector, PatternType
+from app.core.patterns import PatternDetector
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 router = APIRouter()
 
-class PatternDetectionRequest(BaseModel):
-    """Request para detección de patrones"""
-    code: str = Field(..., description="Código del algoritmo en pseudocódigo")
-    min_confidence: float = Field(
-        0.3,
-        ge=0.0,
-        le=1.0,
-        description="Umbral mínimo de confianza (0.0 - 1.0)"
-    )
-    detect_specific: Optional[str] = Field(
-        None,
-        description="Detectar patrón específico (opcional)"
-    )
-
-class IndicatorInfo(BaseModel):
-    """Información de un indicador"""
-    name: str
-    description: str
-    found: bool
-    weight: float
-    evidence: Optional[str] = None
-
-class PatternInfo(BaseModel):
-    """Información de un patrón detectado"""
-    pattern_type: str
-    pattern_name: str
-    confidence: float
-    confidence_level: str
-    typical_complexity: Optional[str]
-    reasoning: str
-    indicators_found: List[IndicatorInfo]
-    indicators_missing: List[IndicatorInfo]
-    rank: int
-    is_primary: bool
-    final_score: float
-    conflicts: List[str]
-
-class PatternDetectionResponse(BaseModel):
-    """Response de la detección de patrones"""
-    success: bool
-    algorithm_name: str
-
-    # Patrón principal
-    primary_pattern: Optional[PatternInfo]
-
-    # Todos los patrones detectados
-    all_patterns: List[PatternInfo]
-
-    # Solo patrones con confianza suficiente
-    confident_patterns: List[PatternInfo]
-
-    # Resumen
-    summary: str
-
-    # Metadata
-    metadata: dict
-
-    message: str
-
-class AvailablePatternsResponse(BaseModel):
-    """Response de patrones disponibles"""
-    success: bool
-    patterns: List[dict]
-    total: int
-
-class SpecificPatternRequest(BaseModel):
-    """Request para detectar patrón específico"""
-    code: str = Field(..., description="Código del algoritmo")
-    pattern_type: str = Field(..., description="Tipo de patrón (ej: 'divide_and_conquer')")
-
-class SpecificPatternResponse(BaseModel):
-    """Response de detección específica"""
-    success: bool
-    pattern_detected: bool
-    pattern_info: Optional[PatternInfo]
-    message: str
-
-
 @router.post(
     "/detect",
-    response_model=PatternDetectionResponse,
+    response_model=PatternDetectionResult,
     status_code=status.HTTP_200_OK,
     summary="Detectar Patrones Algorítmicos",
     description="Detecta todos los patrones algorítmicos presentes en el código"
@@ -130,70 +72,196 @@ async def detect_patterns(request: PatternDetectionRequest):
 
         # 2. Detectar patrones
         detector = PatternDetector()
-        result = detector.detect(ast, request.min_confidence)
+        result = detector.detect(ast, request.options.min_confidence)
 
         logger.info(
             f"Detección completada: {result.pattern_count} patrones encontrados"
         )
 
-        # 3. Construir respuesta
-
-        # Función helper para convertir indicador
-        def _indicator_to_dict(ind) -> IndicatorInfo:
-            return IndicatorInfo(
-                name=ind.name,
-                description=ind.description,
-                found=ind.found,
-                weight=ind.weight,
-                evidence=ind.evidence
-            )
-
-        # Función helper para convertir patrón
-        def _pattern_to_dict(scored_pattern) -> PatternInfo:
-            pattern = scored_pattern.pattern
-            return PatternInfo(
-                pattern_type=pattern.pattern_type.value,
-                pattern_name=pattern.pattern_name,
-                confidence=pattern.confidence,
-                confidence_level=pattern.confidence_level.value,
-                typical_complexity=pattern.typical_complexity,
-                reasoning=pattern.reasoning,
+        # 3. Convertir resultado a schema Pydantic
+        
+        # Convertir patterns_found
+        patterns_found = [
+            PatternMatch(
+                pattern_type=p.pattern.pattern_type,
+                pattern_name=p.pattern.pattern_name,
+                confidence=p.pattern.confidence,
+                confidence_level=ConfidenceLevelEnum(p.pattern.confidence_level.value),
                 indicators_found=[
-                    _indicator_to_dict(ind) for ind in pattern.indicators_found
+                    PatternIndicator(
+                        name=ind.name,
+                        description=ind.description,
+                        found=ind.found,
+                        weight=ind.weight,
+                        evidence=ind.evidence,
+                        location=ind.location,
+                    )
+                    for ind in p.pattern.indicators_found
                 ],
                 indicators_missing=[
-                    _indicator_to_dict(ind) for ind in pattern.indicators_missing
+                    PatternIndicator(
+                        name=ind.name,
+                        description=ind.description,
+                        found=ind.found,
+                        weight=ind.weight,
+                        evidence=ind.evidence,
+                        location=ind.location,
+                    )
+                    for ind in p.pattern.indicators_missing
                 ],
-                rank=scored_pattern.rank,
-                is_primary=scored_pattern.is_primary,
-                final_score=scored_pattern.final_score,
-                conflicts=scored_pattern.conflicts
+                reasoning=p.pattern.reasoning,
+                typical_complexity=p.pattern.typical_complexity,
+                metadata=p.pattern.metadata,
             )
-
-        # Convertir patrón primario
-        primary_info = None
+            for p in result.patterns_found
+        ]
+        
+        # Convertir scored_patterns
+        scored_patterns = [
+            ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+            for sp in result.scored_patterns
+        ]
+        
+        # Patrón primario
+        primary_pattern = None
         if result.primary_pattern:
-            primary_info = _pattern_to_dict(result.primary_pattern)
-
-        # Convertir todos los patrones
-        all_patterns_info = [
-            _pattern_to_dict(p) for p in result.all_patterns
+            sp = result.primary_pattern
+            primary_pattern = ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+        
+        # Patrones confiables
+        confident_patterns = [
+            ScoredPattern(
+                pattern=PatternMatch(
+                    pattern_type=sp.pattern.pattern_type,
+                    pattern_name=sp.pattern.pattern_name,
+                    confidence=sp.pattern.confidence,
+                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    indicators_found=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_found
+                    ],
+                    indicators_missing=[
+                        PatternIndicator(
+                            name=ind.name,
+                            description=ind.description,
+                            found=ind.found,
+                            weight=ind.weight,
+                            evidence=ind.evidence,
+                            location=ind.location,
+                        )
+                        for ind in sp.pattern.indicators_missing
+                    ],
+                    reasoning=sp.pattern.reasoning,
+                    typical_complexity=sp.pattern.typical_complexity,
+                    metadata=sp.pattern.metadata,
+                ),
+                raw_score=sp.raw_score,
+                adjusted_score=sp.adjusted_score,
+                final_score=sp.final_score,
+                confidence_bonus=sp.confidence_bonus,
+                missing_penalty=sp.missing_penalty,
+                conflict_penalty=sp.conflict_penalty,
+                conflicts=sp.conflicts,
+                rank=sp.rank,
+            )
+            for sp in result.confident_patterns
         ]
 
-        # Convertir patrones confiables
-        confident_info = [
-            _pattern_to_dict(p) for p in result.confident_patterns
-        ]
-
-        return PatternDetectionResponse(
-            success=True,
-            algorithm_name=ast.algorithm.name,
-            primary_pattern=primary_info,
-            all_patterns=all_patterns_info,
-            confident_patterns=confident_info,
+        return PatternDetectionResult(
+            patterns_found=patterns_found,
+            scored_patterns=scored_patterns,
+            primary_pattern=primary_pattern,
+            confident_patterns=confident_patterns,
             summary=result.summary,
+            pattern_count=result.pattern_count,
             metadata=result.metadata,
-            message="Detección de patrones completada exitosamente"
         )
 
     except Exception as e:
@@ -208,12 +276,15 @@ async def detect_patterns(request: PatternDetectionRequest):
 
 @router.post(
     "/detect-specific",
-    response_model=SpecificPatternResponse,
+    response_model=BaseResponse,
     status_code=status.HTTP_200_OK,
     summary="Detectar Patrón Específico",
     description="Detecta un patrón algorítmico específico"
 )
-async def detect_specific_pattern(request: SpecificPatternRequest):
+async def detect_specific_pattern(
+    code: str,
+    pattern_type: str
+):
     """
     Detecta un patrón específico en el algoritmo.
 
@@ -232,68 +303,71 @@ async def detect_specific_pattern(request: SpecificPatternRequest):
     - approximation
     """
     try:
-        logger.info(f"Detección específica solicitada: {request.pattern_type}")
+        logger.info(f"Detección específica solicitada: {pattern_type}")
 
         # Validar pattern_type
         try:
-            pattern_type = PatternType(request.pattern_type)
+            pattern_enum = PatternType(pattern_type)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tipo de patrón inválido: {request.pattern_type}"
+                detail=f"Tipo de patrón inválido: {pattern_type}"
             )
 
         # Parsear código
         parser = PseudocodeParser()
-        ast = parser.parse(request.code)
+        ast = parser.parse(code)
 
         # Detectar patrón específico
         detector = PatternDetector()
-        match = detector.detect_specific(ast, pattern_type)
+        match = detector.detect_specific(ast, pattern_enum)
 
         if not match:
-            return SpecificPatternResponse(
+            return BaseResponse(
                 success=True,
-                pattern_detected=False,
-                pattern_info=None,
-                message=f"Patrón {request.pattern_type} no detectado"
+                message=f"Patrón {pattern_type} no detectado",
+                timestamp=None,
             )
 
-        # Convertir a PatternInfo
-        def _indicator_to_dict(ind) -> IndicatorInfo:
-            return IndicatorInfo(
-                name=ind.name,
-                description=ind.description,
-                found=ind.found,
-                weight=ind.weight,
-                evidence=ind.evidence
-            )
-
-        pattern_info = PatternInfo(
-            pattern_type=match.pattern_type.value,
+        # Convertir a PatternMatch
+        pattern_match = PatternMatch(
+            pattern_type=match.pattern_type,
             pattern_name=match.pattern_name,
             confidence=match.confidence,
-            confidence_level=match.confidence_level.value,
-            typical_complexity=match.typical_complexity,
-            reasoning=match.reasoning,
+            confidence_level=ConfidenceLevelEnum(match.confidence_level.value),
             indicators_found=[
-                _indicator_to_dict(ind) for ind in match.indicators_found
+                PatternIndicator(
+                    name=ind.name,
+                    description=ind.description,
+                    found=ind.found,
+                    weight=ind.weight,
+                    evidence=ind.evidence,
+                    location=ind.location,
+                )
+                for ind in match.indicators_found
             ],
             indicators_missing=[
-                _indicator_to_dict(ind) for ind in match.indicators_missing
+                PatternIndicator(
+                    name=ind.name,
+                    description=ind.description,
+                    found=ind.found,
+                    weight=ind.weight,
+                    evidence=ind.evidence,
+                    location=ind.location,
+                )
+                for ind in match.indicators_missing
             ],
-            rank=1,
-            is_primary=True,
-            final_score=match.confidence,
-            conflicts=[]
+            reasoning=match.reasoning,
+            typical_complexity=match.typical_complexity,
+            metadata=match.metadata,
         )
 
-        return SpecificPatternResponse(
-            success=True,
-            pattern_detected=True,
-            pattern_info=pattern_info,
-            message=f"Patrón {match.pattern_name} detectado con confianza {match.confidence:.2%}"
-        )
+        return {
+            "success": True,
+            "message": f"Patrón {match.pattern_name} detectado con confianza {match.confidence:.2%}",
+            "pattern_detected": True,
+            "pattern_info": pattern_match.dict(),
+        }
 
     except HTTPException:
         raise
@@ -309,7 +383,6 @@ async def detect_specific_pattern(request: SpecificPatternRequest):
 
 @router.get(
     "/available",
-    response_model=AvailablePatternsResponse,
     status_code=status.HTTP_200_OK,
     summary="Obtener Patrones Disponibles",
     description="Lista todos los patrones que pueden ser detectados"
@@ -332,11 +405,11 @@ async def get_available_patterns():
                 "typical_complexity": det.typical_complexity
             })
 
-        return AvailablePatternsResponse(
-            success=True,
-            patterns=patterns_info,
-            total=len(patterns_info)
-        )
+        return {
+            "success": True,
+            "patterns": patterns_info,
+            "total": len(patterns_info)
+        }
 
     except Exception as e:
         logger.error(f"Error obteniendo patrones disponibles: {e}")

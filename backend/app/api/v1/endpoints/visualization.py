@@ -6,8 +6,18 @@ Endpoints REST para generar visualizaciones de algoritmos.
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
-from enum import Enum
+from app.schemas import (
+    # Visualization Request Schemas
+    VisualizationRequest,
+    VisualizationOptions,
+    VisualizationType as SchemaVisualizationType,
+    
+    # Visualization Result Schemas
+    VisualizationResult,
+    
+    # Common
+    BaseResponse,
+)
 
 from app.core.parser import PseudocodeParser
 from app.core.visualization import (
@@ -24,66 +34,14 @@ logger = setup_logger(__name__)
 
 router = APIRouter()
 
-# Enums para API
-
-class RenderFormat(str, Enum):
-    """Formatos de renderizado"""
-    SVG = "svg"
-    PNG = "png"
-    PDF = "pdf"
-    DOT = "dot"
-    MERMAID = "mermaid"
-    JSON = "json"
-
-class VisualizationType(str, Enum):
-    """Tipos de visualización"""
-    RECURSION_TREE = "recursion_tree"
-    EXECUTION_FLOW = "execution_flow"
-    DATA_STRUCTURE = "data_structure"
-
-# Schemas
-
-class RecursionTreeRequest(BaseModel):
-    """Request para árbol de recursión"""
-    code: str = Field(..., description="Código del algoritmo en pseudocódigo")
-    start_value: Optional[int] = Field(8, description="Valor inicial para la recursión")
-    max_depth: Optional[int] = Field(10, description="Profundidad máxima del árbol")
-    render_format: RenderFormat = Field(RenderFormat.JSON, description="Formato de renderizado")
-
-class ExecutionFlowRequest(BaseModel):
-    """Request para flujo de ejecución"""
-    code: str = Field(..., description="Código del algoritmo en pseudocódigo")
-    render_format: RenderFormat = Field(RenderFormat.JSON, description="Formato de renderizado")
-
-class GraphGenerationRequest(BaseModel):
-    """Request para generación de grafo"""
-    structure_type: str = Field(..., description="Tipo de estructura (tree, graph, linked_list)")
-    values: Optional[list] = Field(None, description="Valores para la estructura")
-    num_nodes: Optional[int] = Field(None, description="Número de nodos (para grafos)")
-    edges_list: Optional[list] = Field(None, description="Lista de aristas")
-    directed: Optional[bool] = Field(True, description="Si el grafo es dirigido")
-    layout: Optional[str] = Field("hierarchical", description="Tipo de layout")
-    render_format: RenderFormat = Field(RenderFormat.JSON, description="Formato de renderizado")
-
-class VisualizationResponse(BaseModel):
-    """Response genérico de visualización"""
-    success: bool
-    visualization_type: str
-    render_format: str
-    content: str
-    statistics: dict
-    message: str
-
-# Endpoints
-
 @router.post(
     "/recursion-tree",
-    response_model=VisualizationResponse,
+    response_model=VisualizationResult,
     status_code=status.HTTP_200_OK,
     summary="Generar Árbol de Recursión",
     description="Genera y renderiza un árbol de recursión para un algoritmo recursivo"
 )
-async def generate_recursion_tree_endpoint(request: RecursionTreeRequest):
+async def generate_recursion_tree_endpoint(request: VisualizationRequest):
     """
     Genera árbol de recursión para un algoritmo recursivo.
     
@@ -102,11 +60,16 @@ async def generate_recursion_tree_endpoint(request: RecursionTreeRequest):
         
         logger.info(f"Código parseado: {ast.algorithm.name}")
         
+        # Extraer opciones
+        max_depth = request.options.max_depth if request.options else 10
+        start_value = request.options.start_value if request.options else None
+        viz_format = request.options.format if request.options else "svg"
+        
         # Generar árbol de recursión
         from app.core.visualization import RecursionTreeGenerator
         
-        generator = RecursionTreeGenerator(max_depth=request.max_depth)
-        tree_result = generator.generate(ast, start_value=request.start_value)
+        generator = RecursionTreeGenerator(max_depth=max_depth)
+        tree_result = generator.generate(ast, start_value=start_value)
         
         logger.info(
             f"Árbol generado: {tree_result.total_calls} llamadas, "
@@ -114,24 +77,30 @@ async def generate_recursion_tree_endpoint(request: RecursionTreeRequest):
         )
         
         # Renderizar
-        viz_format = VizRenderFormat(request.render_format.value)
-        render_result = render_diagram(tree_result, format=viz_format)
+        render_format = VizRenderFormat(viz_format)
+        render_result = render_diagram(tree_result, format=render_format)
         
-        # Construir respuesta
-        return VisualizationResponse(
-            success=True,
-            visualization_type="recursion_tree",
-            render_format=request.render_format.value,
-            content=render_result.content if isinstance(render_result.content, str) else render_result.content.decode('utf-8'),
+        # Construir respuesta usando VisualizationResult del schema
+        content = render_result.content
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+        
+        return VisualizationResult(
+            type="recursion_tree",
+            format=viz_format,
+            content=content,
+            file_path=None,
             statistics={
                 "recursion_type": tree_result.recursion_type.value,
                 "total_calls": tree_result.total_calls,
                 "max_depth": tree_result.max_depth,
                 "base_cases": tree_result.base_cases,
                 "total_work": tree_result.total_work,
-                "work_per_level": tree_result.work_per_level
+                "work_per_level": tree_result.work_per_level,
             },
-            message="Árbol de recursión generado exitosamente"
+            metadata={
+                "algorithm_name": ast.algorithm.name,
+            },
         )
     
     except Exception as e:
@@ -146,12 +115,12 @@ async def generate_recursion_tree_endpoint(request: RecursionTreeRequest):
 
 @router.post(
     "/execution-flow",
-    response_model=VisualizationResponse,
+    response_model=VisualizationResult,
     status_code=status.HTTP_200_OK,
     summary="Generar Flujo de Ejecución",
     description="Genera un diagrama de flujo que muestra la ejecución paso a paso"
 )
-async def generate_execution_flow_endpoint(request: ExecutionFlowRequest):
+async def generate_execution_flow_endpoint(request: VisualizationRequest):
     """
     Genera diagrama de flujo de ejecución.
     
@@ -176,16 +145,23 @@ async def generate_execution_flow_endpoint(request: ExecutionFlowRequest):
         )
         
         # Renderizar
-        viz_format = VizRenderFormat(request.render_format.value)
-        render_result = render_diagram(flow_result, format=viz_format)
+        viz_format = request.options.format if request.options else "svg"
+        render_format = VizRenderFormat(viz_format)
+        render_result = render_diagram(flow_result, format=render_format)
         
-        return VisualizationResponse(
-            success=True,
-            visualization_type="execution_flow",
-            render_format=request.render_format.value,
-            content=render_result.content if isinstance(render_result.content, str) else render_result.content.decode('utf-8'),
+        content = render_result.content
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+        
+        return VisualizationResult(
+            type="execution_flow",
+            format=viz_format,
+            content=content,
+            file_path=None,
             statistics=flow_result.statistics,
-            message="Flujo de ejecución generado exitosamente"
+            metadata={
+                "algorithm_name": ast.algorithm.name,
+            },
         )
     
     except Exception as e:
@@ -200,12 +176,20 @@ async def generate_execution_flow_endpoint(request: ExecutionFlowRequest):
 
 @router.post(
     "/graph",
-    response_model=VisualizationResponse,
+    response_model=VisualizationResult,
     status_code=status.HTTP_200_OK,
     summary="Generar Grafo de Estructura",
     description="Genera representación gráfica de una estructura de datos"
 )
-async def generate_graph_endpoint(request: GraphGenerationRequest):
+async def generate_graph_endpoint(
+    structure_type: str,
+    values: Optional[list] = None,
+    num_nodes: Optional[int] = None,
+    edges_list: Optional[list] = None,
+    directed: Optional[bool] = True,
+    layout: Optional[str] = "hierarchical",
+    render_format: Optional[str] = "svg"
+):
     """
     Genera grafo de estructura de datos.
     
@@ -215,29 +199,29 @@ async def generate_graph_endpoint(request: GraphGenerationRequest):
     - Listas enlazadas
     """
     try:
-        logger.info(f"Generando grafo: {request.structure_type}")
+        logger.info(f"Generando grafo: {structure_type}")
         
         # Preparar kwargs
         kwargs = {}
-        if request.values:
-            kwargs["values"] = request.values
-        if request.num_nodes:
-            kwargs["num_nodes"] = request.num_nodes
-        if request.edges_list:
-            kwargs["edges_list"] = [tuple(edge) for edge in request.edges_list]
-        if request.directed is not None:
-            kwargs["directed"] = request.directed
+        if values:
+            kwargs["values"] = values
+        if num_nodes:
+            kwargs["num_nodes"] = num_nodes
+        if edges_list:
+            kwargs["edges_list"] = [tuple(edge) for edge in edges_list]
+        if directed is not None:
+            kwargs["directed"] = directed
         
         # Layout
         try:
-            layout = LayoutType(request.layout)
+            layout_type = LayoutType(layout)
         except ValueError:
-            layout = LayoutType.HIERARCHICAL
+            layout_type = LayoutType.HIERARCHICAL
         
         # Generar grafo
         graph_result = generate_graph(
-            structure_type=request.structure_type,
-            layout=layout,
+            structure_type=structure_type,
+            layout=layout_type,
             **kwargs
         )
         
@@ -247,16 +231,23 @@ async def generate_graph_endpoint(request: GraphGenerationRequest):
         )
         
         # Renderizar
-        viz_format = VizRenderFormat(request.render_format.value)
+        viz_format = VizRenderFormat(render_format)
         render_result = render_diagram(graph_result, format=viz_format)
         
-        return VisualizationResponse(
-            success=True,
-            visualization_type="data_structure",
-            render_format=request.render_format.value,
-            content=render_result.content if isinstance(render_result.content, str) else render_result.content.decode('utf-8'),
+        content = render_result.content
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+        
+        return VisualizationResult(
+            type="data_structure",
+            format=render_format,
+            content=content,
+            file_path=None,
             statistics=graph_result.statistics,
-            message=f"Grafo de {request.structure_type} generado exitosamente"
+            metadata={
+                "structure_type": structure_type,
+                "layout": layout,
+            },
         )
     
     except Exception as e:

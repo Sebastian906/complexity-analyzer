@@ -8,26 +8,51 @@ validación, exportación y gestión de caché.
 
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Query, Path as PathParam
-from pydantic import BaseModel, Field
+from app.schemas import (
+    # Algorithm Schemas
+    AlgorithmCreate,
+    AlgorithmUpdate,
+    Algorithm,
+    AlgorithmMetadata,
+    AlgorithmListRequest,
+    AlgorithmSearchCriteria,
+    AlgorithmResponse,
+    AlgorithmListResponse,
+    AlgorithmCategory,
+    AlgorithmSortBy,
+    
+    # Analysis Schemas
+    CompleteAnalysisRequest,
+    CompleteAnalysisResult,
+    BatchAnalysisRequest,
+    BatchAnalysisResult,
+    QuickAnalysisRequest,
+    QuickAnalysisResult,
+    
+    # Validation Schemas
+    ValidationRequest,
+    CompleteValidationResult,
+    ValidationLevel,
+    
+    # Export Schemas
+    ExportRequest,
+    ExportResult,
+    BatchExportRequest,
+    BatchExportResult,
+    
+    # Common Schemas
+    BaseResponse,
+    ErrorResponse,
+)
 
 from app.services import (
     AlgorithmService,
-    AlgorithmCreateRequest,
-    AlgorithmUpdateRequest,
-    AlgorithmSearchCriteria,
-    AlgorithmCategory,
-    AlgorithmStatus,
     AnalysisOrchestrator,
-    CompleteAnalysisRequest,
     ValidationService,
-    ValidationRequest,
-    ValidationLevel,
     ExportService,
-    ExportRequest,
-    ExportFormat,
-    ExportOptions,
     CacheService,
     get_cache_service,
+    AlgorithmStatus,
 )
 from app.utils.logger import setup_logger
 
@@ -35,57 +60,13 @@ logger = setup_logger(__name__)
 
 router = APIRouter()
 
-# Instancias de servicios (en producción, usar dependency injection)
+# INSTANCIAS DE SERVICIOS
 algorithm_service = AlgorithmService()
 analysis_orchestrator = AnalysisOrchestrator()
 validation_service = ValidationService()
 export_service = ExportService()
 
-# Schemas de Response
-class AlgorithmResponse(BaseModel):
-    """Response de algoritmo"""
-    id: str
-    name: str
-    category: Optional[str]
-    tags: List[str]
-    status: str
-    created_at: str
-    lines_of_code: int
-
-class AlgorithmDetailResponse(AlgorithmResponse):
-    """Response detallado de algoritmo"""
-    code: str
-    description: Optional[str]
-    author: Optional[str]
-    version: int
-    analysis_count: int
-
-class ValidationResponse(BaseModel):
-    """Response de validación"""
-    is_valid: bool
-    level: str
-    total_issues: int
-    errors: List[dict]
-    warnings: List[dict]
-    infos: List[dict]
-
-class ExportResponse(BaseModel):
-    """Response de exportación"""
-    success: bool
-    format: str
-    size_bytes: int
-    file_path: Optional[str]
-    content: Optional[str]
-
-class CacheStatsResponse(BaseModel):
-    """Response de estadísticas de caché"""
-    total_entries: int
-    active_entries: int
-    expired_entries: int
-    total_hits: int
-    avg_hits: float
-
-# Endpoints - Algoritmos
+# ENDPOINTS - ALGORITMOS (CRUD)
 @router.post(
     "/algorithms",
     response_model=AlgorithmResponse,
@@ -93,7 +74,7 @@ class CacheStatsResponse(BaseModel):
     summary="Crear Algoritmo",
     description="Crea y almacena un nuevo algoritmo"
 )
-async def create_algorithm(request: AlgorithmCreateRequest):
+async def create_algorithm(request: AlgorithmCreate):
     """
     Crea un nuevo algoritmo.
     
@@ -105,13 +86,24 @@ async def create_algorithm(request: AlgorithmCreateRequest):
         result = await algorithm_service.create(request)
 
         return AlgorithmResponse(
-            id=result.metadata.id,
-            name=result.metadata.name,
-            category=result.metadata.category.value if result.metadata.category else None,
-            tags=result.metadata.tags,
-            status=result.metadata.status.value,
-            created_at=result.metadata.created_at.isoformat(),
-            lines_of_code=result.metadata.lines_of_code
+            success=True,
+            message="Algoritmo creado exitosamente",
+            algorithm=Algorithm(
+                id=result.metadata.id,
+                name=result.metadata.name,
+                description=result.metadata.description,
+                category=result.metadata.category,
+                tags=result.metadata.tags,
+                language=request.language,
+                code=result.code,
+                info=None,  # Se puede extraer si es necesario
+                created_at=result.metadata.created_at,
+                updated_at=result.metadata.updated_at,
+                analyzed=False,
+                analysis_count=result.metadata.analysis_count,
+                complexity_class=None,
+                big_o=None,
+            )
         )
     except Exception as e:
         logger.error(f"Error creando algoritmo: {e}")
@@ -122,7 +114,7 @@ async def create_algorithm(request: AlgorithmCreateRequest):
 
 @router.get(
     "/algorithms/{algorithm_id}",
-    response_model=AlgorithmDetailResponse,
+    response_model=AlgorithmResponse,
     summary="Obtener Algoritmo",
     description="Obtiene un algoritmo por ID"
 )
@@ -138,19 +130,25 @@ async def get_algorithm(
             detail=f"Algoritmo no encontrado: {algorithm_id}"
         )
 
-    return AlgorithmDetailResponse(
-        id=result.metadata.id,
-        name=result.metadata.name,
-        code=result.code,
-        description=result.metadata.description,
-        category=result.metadata.category.value if result.metadata.category else None,
-        tags=result.metadata.tags,
-        status=result.metadata.status.value,
-        author=result.metadata.author,
-        created_at=result.metadata.created_at.isoformat(),
-        version=result.metadata.version,
-        lines_of_code=result.metadata.lines_of_code,
-        analysis_count=result.metadata.analysis_count
+    return AlgorithmResponse(
+        success=True,
+        message="Algoritmo recuperado exitosamente",
+        algorithm=Algorithm(
+            id=result.metadata.id,
+            name=result.metadata.name,
+            description=result.metadata.description,
+            category=result.metadata.category,
+            tags=result.metadata.tags,
+            language="pseudocode",  # Ajustar según metadata
+            code=result.code,
+            info=None,
+            created_at=result.metadata.created_at,
+            updated_at=result.metadata.updated_at,
+            analyzed=result.metadata.analysis_count > 0,
+            analysis_count=result.metadata.analysis_count,
+            complexity_class=None,
+            big_o=None,
+        )
     )
 
 @router.put(
@@ -161,7 +159,7 @@ async def get_algorithm(
 )
 async def update_algorithm(
     algorithm_id: str,
-    request: AlgorithmUpdateRequest
+    request: AlgorithmUpdate
 ):
     """Actualiza un algoritmo (incrementa versión automáticamente)"""
     result = await algorithm_service.update(algorithm_id, request)
@@ -173,13 +171,24 @@ async def update_algorithm(
         )
 
     return AlgorithmResponse(
-        id=result.metadata.id,
-        name=result.metadata.name,
-        category=result.metadata.category.value if result.metadata.category else None,
-        tags=result.metadata.tags,
-        status=result.metadata.status.value,
-        created_at=result.metadata.created_at.isoformat(),
-        lines_of_code=result.metadata.lines_of_code
+        success=True,
+        message="Algoritmo actualizado exitosamente",
+        algorithm=Algorithm(
+            id=result.metadata.id,
+            name=result.metadata.name,
+            description=result.metadata.description,
+            category=result.metadata.category,
+            tags=result.metadata.tags,
+            language="pseudocode",
+            code=result.code,
+            info=None,
+            created_at=result.metadata.created_at,
+            updated_at=result.metadata.updated_at,
+            analyzed=result.metadata.analysis_count > 0,
+            analysis_count=result.metadata.analysis_count,
+            complexity_class=None,
+            big_o=None,
+        )
     )
 
 @router.delete(
@@ -198,44 +207,57 @@ async def delete_algorithm(algorithm_id: str):
             detail=f"Algoritmo no encontrado: {algorithm_id}"
         )
 
-@router.get(
-    "/algorithms",
-    response_model=List[AlgorithmResponse],
-    summary="Listar Algoritmos",
-    description="Lista algoritmos con paginación y filtros"
+@router.post(
+    "/algorithms/search",
+    response_model=AlgorithmListResponse,
+    summary="Buscar Algoritmos",
+    description="Busca algoritmos con filtros y paginación"
 )
-async def search_algorithms(
-    name: Optional[str] = Query(None, description="Filtrar por nombre"),
-    category: Optional[AlgorithmCategory] = Query(None, description="Filtrar por categoría"),
-    status: Optional[AlgorithmStatus] = Query(None, description="Filtrar por estado"),
-    tags: Optional[str] = Query(None, description="Filtrar por tags (separados por coma)"),
-    limit: int = Query(10, ge=1, le=100, description="Límite de resultados"),
-    offset: int = Query(0, ge=0, description="Offset para paginación")
-):
-    """Lista algoritmos con filtros opcionales"""
-    criteria = AlgorithmSearchCriteria(
-        name=name,
-        category=category,
-        status=status,
-        tags=tags.split(",") if tags else None,
-        limit=limit,
-        offset=offset
+async def search_algorithms(request: AlgorithmListRequest):
+    """Busca algoritmos con criterios y paginación"""
+    
+    # Convertir a formato interno del servicio
+    from app.services.algorithm_service import AlgorithmSearchCriteria as InternalCriteria
+    
+    internal_criteria = InternalCriteria(
+        name=request.criteria.query if request.criteria else None,
+        category=request.criteria.category if request.criteria else None,
+        tags=request.criteria.tags if request.criteria else None,
+        status=None,  # Mapear si es necesario
+        author=None,
+        limit=request.page_size,
+        offset=(request.page - 1) * request.page_size
     )
 
-    results = await algorithm_service.search(criteria)
+    results = await algorithm_service.search(internal_criteria)
 
-    return [
-        AlgorithmResponse(
+    # Convertir a AlgorithmMetadata del schema
+    metadata_list = [
+        AlgorithmMetadata(
             id=r.id,
             name=r.name,
-            category=r.category.value if r.category else None,
+            category=r.category,
             tags=r.tags,
-            status=r.status.value,
-            created_at=r.created_at.isoformat(),
-            lines_of_code=r.lines_of_code
+            complexity_class=None,
+            big_o=None,
+            created_at=r.created_at,
+            analyzed=r.analysis_count > 0,
         )
         for r in results
     ]
+
+    total = len(results)  # En producción, hacer query de count
+    total_pages = (total + request.page_size - 1) // request.page_size
+
+    return AlgorithmListResponse(
+        success=True,
+        message="Búsqueda completada exitosamente",
+        algorithms=metadata_list,
+        total=total,
+        page=request.page,
+        page_size=request.page_size,
+        total_pages=total_pages,
+    )
 
 @router.get(
     "/algorithms-stats",
@@ -246,9 +268,10 @@ async def get_algorithm_stats():
     """Obtiene estadísticas del servicio"""
     return algorithm_service.get_statistics()
 
-# Endpoints - Análisis Completo
+# ENDPOINTS - ANÁLISIS COMPLETO
 @router.post(
     "/analyze-complete",
+    response_model=CompleteAnalysisResult,
     status_code=status.HTTP_200_OK,
     summary="Análisis Completo",
     description="Ejecuta análisis completo de un algoritmo (todos los módulos)"
@@ -265,36 +288,11 @@ async def analyze_complete(request: CompleteAnalysisRequest):
     try:
         result = await analysis_orchestrator.analyze_complete(request)
 
-        # Convertir a dict serializable
-        response = {
-            "success": result.success,
-            "status": result.status.value,
-            "algorithm_name": result.algorithm_name,
-            "total_duration": result.total_duration,
-            "steps": [
-                {
-                    "step": s.step.value,
-                    "success": s.success,
-                    "duration": s.duration,
-                    "error": s.error
-                }
-                for s in result.steps
-            ],
-            "complexity_result": result.complexity_result,
-            "patterns_result": result.patterns_result,
-            "structures_result": result.structures_result,
-            "visualizations_result": result.visualizations_result,
-            "summary": result.summary,
-            "metadata": result.metadata,
-            "errors": result.errors,
-            "warnings": result.warnings,
-        }
-
         # Incrementar contador si tiene algorithm_id
-        if request.algorithm_id:
+        if hasattr(request, 'algorithm_id') and request.algorithm_id:
             await algorithm_service.increment_analysis_count(request.algorithm_id)
 
-        return response
+        return result
 
     except Exception as e:
         logger.error(f"Error en análisis completo: {e}", exc_info=True)
@@ -303,10 +301,38 @@ async def analyze_complete(request: CompleteAnalysisRequest):
             detail=str(e)
         )
 
-# Endpoints - Validación
+@router.post(
+    "/analyze-batch",
+    response_model=BatchAnalysisResult,
+    summary="Análisis en Batch",
+    description="Analiza múltiples algoritmos en paralelo"
+)
+async def analyze_batch(request: BatchAnalysisRequest):
+    """Análisis en batch de múltiples algoritmos"""
+    # TODO: Implementar lógica de batch
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Endpoint en desarrollo"
+    )
+
+@router.post(
+    "/analyze-quick",
+    response_model=QuickAnalysisResult,
+    summary="Análisis Rápido",
+    description="Análisis simplificado y rápido"
+)
+async def analyze_quick(request: QuickAnalysisRequest):
+    """Análisis rápido simplificado"""
+    # TODO: Implementar análisis rápido
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Endpoint en desarrollo"
+    )
+
+# ENDPOINTS - VALIDACIÓN
 @router.post(
     "/validate",
-    response_model=ValidationResponse,
+    response_model=CompleteValidationResult,
     summary="Validar Código",
     description="Valida código en múltiples niveles"
 )
@@ -322,41 +348,29 @@ async def validate_code(request: ValidationRequest):
     """
     try:
         result = await validation_service.validate(request)
-
-        return ValidationResponse(
+        
+        # Convertir ValidationResult a CompleteValidationResult
+        # (Aquí podrías necesitar mapear campos adicionales)
+        return CompleteValidationResult(
+            success=result.is_valid,
+            message="Validación completada",
+            timestamp=None,  # Agregar si es necesario
             is_valid=result.is_valid,
-            level=result.level.value,
-            total_issues=result.total_issues,
-            errors=[
-                {
-                    "severity": e.severity.value,
-                    "message": e.message,
-                    "line": e.line,
-                    "rule": e.rule,
-                    "suggestion": e.suggestion
-                }
-                for e in result.errors
-            ],
-            warnings=[
-                {
-                    "severity": w.severity.value,
-                    "message": w.message,
-                    "line": w.line,
-                    "rule": w.rule,
-                    "suggestion": w.suggestion
-                }
-                for w in result.warnings
-            ],
-            infos=[
-                {
-                    "severity": i.severity.value,
-                    "message": i.message,
-                    "line": i.line,
-                    "rule": i.rule,
-                    "suggestion": i.suggestion
-                }
-                for i in result.infos
-            ]
+            errors=result.errors,
+            warnings=result.warnings,
+            info=result.infos,
+            error_count=len(result.errors),
+            warning_count=len(result.warnings),
+            info_count=len(result.infos),
+            hint_count=0,
+            lines_analyzed=result.metadata.get("lines_count", 0),
+            statements_analyzed=0,
+            summary=f"Validación {'exitosa' if result.is_valid else 'fallida'}: {result.total_issues} issues encontrados",
+            syntax=None,  # Mapear si está disponible
+            semantic=None,
+            structural=None,
+            best_practices=None,
+            overall_score=1.0 if result.is_valid else 0.5,
         )
 
     except Exception as e:
@@ -379,10 +393,10 @@ async def quick_validate(code: str = Query(..., description="Código a validar")
     except Exception as e:
         return {"is_valid": False, "error": str(e)}
 
-# Endpoints - Exportación
+# ENDPOINTS - EXPORTACIÓN
 @router.post(
     "/export",
-    response_model=ExportResponse,
+    response_model=ExportResult,
     summary="Exportar Resultados",
     description="Exporta resultados de análisis en formato especificado"
 )
@@ -396,17 +410,11 @@ async def export_results(request: ExportRequest):
     - HTML
     - TXT
     - PDF (pendiente)
+    - Excel (pendiente)
     """
     try:
         result = await export_service.export(request)
-
-        return ExportResponse(
-            success=result.success,
-            format=result.format.value,
-            size_bytes=result.size_bytes,
-            file_path=str(result.file_path) if result.file_path else None,
-            content=result.content if not result.file_path else None
-        )
+        return result
 
     except Exception as e:
         logger.error(f"Error en exportación: {e}")
@@ -415,10 +423,23 @@ async def export_results(request: ExportRequest):
             detail=str(e)
         )
 
-# Endpoints - Caché
+@router.post(
+    "/export-batch",
+    response_model=BatchExportResult,
+    summary="Exportación en Batch",
+    description="Exporta múltiples resultados"
+)
+async def export_batch(request: BatchExportRequest):
+    """Exportación en batch"""
+    # TODO: Implementar
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Endpoint en desarrollo"
+    )
+
+# ENDPOINTS - CACHÉ
 @router.get(
     "/cache/stats",
-    response_model=CacheStatsResponse,
     summary="Estadísticas de Caché",
     description="Obtiene estadísticas del servicio de caché"
 )
@@ -427,13 +448,14 @@ async def get_cache_stats():
     cache = get_cache_service()
     stats = cache.get_statistics()
 
-    return CacheStatsResponse(
-        total_entries=stats["total_entries"],
-        active_entries=stats["active_entries"],
-        expired_entries=stats["expired_entries"],
-        total_hits=stats["total_hits"],
-        avg_hits=stats["avg_hits"]
-    )
+    return {
+        "success": True,
+        "total_entries": stats["total_entries"],
+        "active_entries": stats["active_entries"],
+        "expired_entries": stats["expired_entries"],
+        "total_hits": stats["total_hits"],
+        "avg_hits": stats["avg_hits"]
+    }
 
 @router.delete(
     "/cache/clear",
