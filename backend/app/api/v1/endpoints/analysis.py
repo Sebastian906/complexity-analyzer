@@ -6,7 +6,32 @@ Endpoints REST para analizar algoritmos y obtener su complejidad.
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from app.schemas import (
+    # Analysis Request Schemas
+    ComplexityAnalysisRequest,
+    ComplexityAnalysisOptions,
+    RecurrenceMethod,
+    
+    # Analysis Result Schemas
+    CompleteAnalysisResult,
+    LineByLineAnalysis,
+    LineExecution,
+    
+    # Complexity Schemas
+    ComplexityAnalysis,
+    SpaceComplexityAnalysis,
+    RecurrenceEquation,
+    RecurrenceSolution,
+    TightBoundResult,
+    ComplexityClass,
+    SolutionMethod,
+    
+    # Algorithm Schemas
+    AlgorithmInfo,
+    
+    # Common
+    BaseResponse,
+)
 
 from app.core.parser import PseudocodeParser
 from app.core.analyzer.analyzer_engine import AnalyzerEngine
@@ -16,97 +41,14 @@ logger = setup_logger(__name__)
 
 router = APIRouter()
 
-class AnalysisRequest(BaseModel):
-    """Request para análisis de complejidad"""
-    code: str = Field(..., description="Código del algoritmo en pseudocódigo")
-    analyze_temporal: bool = Field(True, description="Analizar complejidad temporal")
-    analyze_spatial: bool = Field(True, description="Analizar complejidad espacial")
-    analyze_line_by_line: bool = Field(True, description="Análisis línea por línea")
-    analyze_recurrence: bool = Field(True, description="Construir ecuaciones de recurrencia")
-    analyze_tight_bounds: bool = Field(True, description="Verificar cotas ajustadas")
-
-class RecurrenceInfo(BaseModel):
-    """Información de ecuación de recurrencia"""
-    equation: Optional[str] = None
-
-class RecurrenceSolveRequest(BaseModel):
-    """Request para resolver ecuación de recurrencia"""
-    equation: str = Field(..., description="Ecuación (ej: T(n) = 2T(n/2) + n)")
-    base_case: Optional[str] = Field(None, description="Caso base (ej: T(1) = 1)")
-    method: Optional[str] = Field(None, description="Método preferido")
-    base_case: Optional[str] = None
-    pattern: Optional[str] = None
-    method_used: Optional[str] = None
-    solution_complexity: Optional[str] = None
-    solution_steps: Optional[list] = None
-    alternative_methods: Optional[list] = None
-
-class ComplexityInfo(BaseModel):
-    """Información de complejidad"""
-    big_o: str
-    omega: str
-    theta: Optional[str]
-
-class SpaceInfo(BaseModel):
-    """Información de complejidad espacial"""
-    total: str
-    input_space: str
-    auxiliary_space: str
-    recursion_space: str
-    breakdown: Optional[dict] = None
-
-class TightBoundsInfo(BaseModel):
-    """Información de cotas ajustadas"""
-    has_tight_bound: bool
-    theta: Optional[str] = None
-    explanation: str
-    little_o: Optional[str] = None
-    little_omega: Optional[str] = None
-
-class LineInfo(BaseModel):
-    """Información de una línea"""
-    line: int
-    type: str
-    executions: str
-    explanation: str
-
-class AnalysisResponse(BaseModel):
-    """Response del análisis completo"""
-    success: bool
-    algorithm_name: str
-
-    # Complejidad temporal
-    temporal_complexity: ComplexityInfo
-
-    # Complejidad espacial
-    spatial_complexity: Optional[SpaceInfo] = None
-
-    # Ecuaciones de recurrencia
-    temporal_recurrence: Optional[RecurrenceInfo] = None
-    spatial_recurrence: Optional[RecurrenceInfo] = None
-
-    # Cotas ajustadas
-    tight_bounds: Optional[TightBoundsInfo] = None
-
-    # Análisis línea por línea
-    line_by_line: Optional[list[LineInfo]] = None
-
-    # Metadata
-    metadata: dict
-
-    # Resumen legible
-    summary: Optional[str] = None
-
-    message: str
-
 @router.post(
     "/analyze",
-    response_model=AnalysisResponse,
+    response_model=CompleteAnalysisResult,
     status_code=status.HTTP_200_OK,
     summary="Analizar Complejidad Completa",
     description="Analiza completamente un algoritmo incluyendo ecuaciones de recurrencia"
 )
-async def analyze_complexity(request: AnalysisRequest):
+async def analyze_complexity(request: ComplexityAnalysisRequest):
     """
     Analiza la complejidad completa de un algoritmo.
     
@@ -130,112 +72,148 @@ async def analyze_complexity(request: AnalysisRequest):
         engine = AnalyzerEngine()
         result = engine.analyze(
             ast,
-            analyze_line_by_line=request.analyze_line_by_line,
-            analyze_space=request.analyze_spatial,
-            analyze_recurrence=request.analyze_recurrence,
-            analyze_tight_bounds=request.analyze_tight_bounds
+            analyze_line_by_line=request.options.analyze_line_by_line,
+            analyze_space=request.options.analyze_spatial,
+            analyze_recurrence=request.options.analyze_recurrence,
+            analyze_tight_bounds=request.options.calculate_tight_bounds
         )
 
-        # 3. Construir respuesta estructurada
+        # 3. Construir AlgorithmInfo
+        algorithm_info = AlgorithmInfo(
+            name=ast.algorithm.name,
+            parameters=[],  # Extraer si es necesario
+            has_recursion=result.is_recursive,
+            has_loops=True,  # Detectar del AST
+            max_nesting_depth=result.max_nesting_depth,
+            total_lines=len(request.code.splitlines()),
+            total_statements=0,  # Contar del AST
+        )
 
-        # Complejidad temporal
-        temporal_complexity = ComplexityInfo(
+        # 4. Construir ComplexityAnalysis
+        complexity = ComplexityAnalysis(
             big_o=result.big_o,
             omega=result.omega,
-            theta=result.theta
+            theta=result.theta,
+            big_o_class=_get_complexity_class(result.big_o),
+            omega_class=_get_complexity_class(result.omega),
+            theta_class=_get_complexity_class(result.theta) if result.theta else None,
+            explanation=f"Complejidad temporal del algoritmo {ast.algorithm.name}",
+            reasoning=[
+                "Análisis basado en estructura del código",
+                f"Complejidad dominante: {result.big_o}"
+            ],
+            has_tight_bound=result.theta is not None,
         )
 
-        # Complejidad espacial
-        spatial_complexity = None
+        # 5. Construir SpaceComplexityAnalysis
+        space_complexity = None
         if result.space_analysis:
-            spatial_complexity = SpaceInfo(
+            space_complexity = SpaceComplexityAnalysis(
                 total=result.space_analysis.space_complexity,
                 input_space=result.space_analysis.input_space,
                 auxiliary_space=result.space_analysis.auxiliary_space,
                 recursion_space=result.space_analysis.recursion_space,
-                breakdown=result.space_analysis.breakdown
+                explanation=f"Espacio total: {result.space_analysis.space_complexity}",
+                breakdown={
+                    "input": result.space_analysis.input_space,
+                    "auxiliary": result.space_analysis.auxiliary_space,
+                    "recursion": result.space_analysis.recursion_space,
+                }
             )
 
-        # Ecuación de recurrencia temporal
-        temporal_recurrence = None
+        # 6. Construir RecurrenceEquation temporal
+        recurrence_temporal = None
         if result.temporal_recurrence and result.temporal_recurrence.recurrence_equation:
             eq = result.temporal_recurrence.recurrence_equation
             sol = result.temporal_recurrence.solution
             
-            temporal_recurrence = RecurrenceInfo(
+            recurrence_temporal = RecurrenceEquation(
                 equation=eq.equation,
                 base_case=eq.base_case,
-                pattern=eq.recursion_pattern,
-                method_used=sol.method_used.value if sol else None,
-                solution_complexity=sol.complexity if sol else None,
-                solution_steps=sol.steps if sol else None,
-                alternative_methods=[m.value for m in sol.alternative_methods] if sol else None
-            )
-        
-        # Ecuación de recurrencia espacial
-        spatial_recurrence = None
-        if result.spatial_recurrence and result.spatial_recurrence.recurrence_equation:
-            eq = result.spatial_recurrence.recurrence_equation
-            sol = result.spatial_recurrence.solution
-            
-            spatial_recurrence = RecurrenceInfo(
-                equation=eq.equation,
-                base_case=eq.base_case,
-                pattern=eq.recursion_pattern,
-                method_used=sol.method_used.value if sol else None,
-                solution_complexity=sol.complexity if sol else None,
-                solution_steps=sol.steps if sol else None,
-                alternative_methods=[m.value for m in sol.alternative_methods] if sol else None
+                recursion_pattern=eq.recursion_pattern,
+                a=None,  # Extraer si está disponible
+                b=None,
+                f_n=None,
+                explanation=f"Ecuación de recurrencia para {ast.algorithm.name}",
             )
 
-        # Cotas ajustadas
+        # 7. Construir TightBoundResult
         tight_bounds = None
         if result.tight_bounds:
-            tight_bounds = TightBoundsInfo(
+            tight_bounds = TightBoundResult(
                 has_tight_bound=result.tight_bounds.has_tight_bound,
                 theta=result.tight_bounds.theta,
-                explanation=result.tight_bounds.explanation,
                 little_o=result.tight_bounds.little_o,
-                little_omega=result.tight_bounds.little_omega
+                little_omega=result.tight_bounds.little_omega,
+                explanation=result.tight_bounds.explanation,
+                conditions=[],
             )
 
-        # Análisis línea por línea
-        line_by_line_list = None
+        # 8. Construir LineByLineAnalysis
+        line_by_line = None
         if result.line_by_line:
-            line_by_line_list = [
-                LineInfo(
-                    line=line.line_number,
-                    type=line.statement_type,
-                    executions=line.execution_count,
-                    explanation=line.explanation
-                )
-                for line in result.line_by_line.lines
-            ]
+            line_by_line = LineByLineAnalysis(
+                lines=[
+                    LineExecution(
+                        line_number=line.line_number,
+                        code=line.code,
+                        execution_count=line.execution_count,
+                        statement_type=line.statement_type,
+                        complexity_contribution=line.complexity_contribution,
+                        explanation=line.explanation,
+                        location=None,
+                    )
+                    for line in result.line_by_line.lines
+                ],
+                dominant_complexity=result.big_o,
+                total_lines=len(result.line_by_line.lines),
+                summary=f"Análisis línea por línea de {ast.algorithm.name}",
+            )
 
-        # Metadata
-        metadata = {
-            "is_recursive": result.is_recursive,
-            "max_nesting_depth": result.max_nesting_depth,
-            "analysis_time": result.analysis_time,
-            "complexity_class": _get_complexity_class(result.big_o),
-            "space_optimal": _is_space_optimal(spatial_complexity.auxiliary_space if spatial_complexity else "1")
-        }
+        # 9. Construir metadata
+        from app.schemas.common import AnalysisMetadata, TimingMetadata
+        from datetime import datetime
+        
+        metadata = AnalysisMetadata(
+            timing=TimingMetadata(
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow(),
+                duration_ms=result.analysis_time * 1000 if hasattr(result, 'analysis_time') else 0,
+            ),
+            resources=None,
+            version="1.0.0",
+            environment="production",
+        )
 
-        # Generar resumen legible
-        summary = engine.get_complexity_summary(result)
+        # 10. Generar resumen
+        summary = f"""
+Algoritmo: {ast.algorithm.name}
+Complejidad Temporal: {result.big_o}
+Complejidad Espacial: {space_complexity.total if space_complexity else 'N/A'}
+Recursivo: {'Sí' if result.is_recursive else 'No'}
+        """.strip()
 
-        return AnalysisResponse(
+        # 11. Construir resultado completo
+        return CompleteAnalysisResult(
             success=True,
-            algorithm_name=result.algorithm_name,
-            temporal_complexity=temporal_complexity,
-            spatial_complexity=spatial_complexity,
-            temporal_recurrence=temporal_recurrence,
-            spatial_recurrence=spatial_recurrence,
-            tight_bounds=tight_bounds,
-            line_by_line=line_by_line_list,
+            message="Análisis completado exitosamente",
+            timestamp=datetime.utcnow(),
+            algorithm_name=ast.algorithm.name,
+            algorithm_info=algorithm_info,
+            complexity=complexity,
+            space_complexity=space_complexity,
+            recurrence_temporal=recurrence_temporal,
+            recurrence_spatial=None,
+            line_by_line=line_by_line,
+            patterns=None,
+            structures=None,
+            visualizations=[],
             metadata=metadata,
             summary=summary,
-            message="Análisis completado exitosamente"
+            recommendations=[
+                "Considerar optimizaciones si la complejidad es alta",
+                "Verificar uso de memoria para grandes entradas",
+            ],
         )
 
     except Exception as e:
@@ -253,44 +231,52 @@ async def analyze_complexity(request: AnalysisRequest):
     summary="Resolver Ecuación de Recurrencia",
     description="Resuelve una ecuación de recurrencia específica"
 )
-async def solve_recurrence_equation(request: RecurrenceSolveRequest):
+async def solve_recurrence_equation(
+    equation: str,
+    base_case: Optional[str] = None,
+    method: Optional[str] = None
+):
     """
     Resuelve una ecuación de recurrencia específica.
     
     Métodos disponibles:
-    - iteracion
-    - arbol_recursion
-    - teorema_maestro
-    - sustitucion_inteligente
-    - ecuacion_caracteristica
+    - iteration
+    - recursion_tree
+    - master_theorem
+    - substitution
+    - characteristic
     """
     try:
         from app.core.analyzer.recurrence import solve_recurrence, SolutionMethod
         
         # Convertir método si se especificó
         preferred_method = None
-        if request.method:
+        if method:
             try:
-                preferred_method = SolutionMethod(request.method)
+                preferred_method = SolutionMethod(method)
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Método inválido: {request.method}"
+                    detail=f"Método inválido: {method}"
                 )
 
         # Resolver
-        result = solve_recurrence(request.equation, request.base_case, preferred_method)
+        result = solve_recurrence(equation, base_case, preferred_method)
+
+        # Construir RecurrenceSolution
+        solution = RecurrenceSolution(
+            complexity=result.complexity,
+            complexity_class=_get_complexity_class(result.complexity),
+            method_used=result.method_used,
+            steps=result.steps,
+            verification=result.explanation,
+        )
 
         return {
             "success": True,
-            "equation": request.equation,
-            "base_case": request.base_case,
-            "form_detected": result.form_detected.name,
-            "method_used": result.method_used.value,
-            "complexity": result.complexity,
-            "steps": result.steps,
-            "alternative_methods": [m.value for m in result.alternative_methods],
-            "explanation": result.explanation
+            "equation": equation,
+            "base_case": base_case,
+            "solution": solution.dict(),
         }
 
     except Exception as e:
@@ -342,26 +328,25 @@ async def get_applicable_methods(equation_form: str):
             detail=str(e)
         )
 
-# Funciones auxiliares
-
-def _get_complexity_class(big_o: str) -> str:
-    """Obtiene la clase de complejidad"""
-    clean = big_o.replace("O(", "").replace(")", "")
-
-    classes = {
-        "1": "Constante",
-        "log n": "Logarítmica",
-        "n": "Lineal",
-        "n log n": "Linealítmica",
-        "n²": "Cuadrática",
-        "n^2": "Cuadrática",
-        "2^n": "Exponencial",
-        "n!": "Factorial"
+# FUNCIONES AUXILIARES
+def _get_complexity_class(notation: str) -> Optional[ComplexityClass]:
+    """Obtiene la clase de complejidad desde notación"""
+    if not notation:
+        return None
+    
+    clean = notation.replace("O(", "").replace(")", "").replace("Ω(", "").replace("Θ(", "")
+    
+    mapping = {
+        "1": ComplexityClass.CONSTANT,
+        "log n": ComplexityClass.LOGARITHMIC,
+        "n": ComplexityClass.LINEAR,
+        "n log n": ComplexityClass.LINEARITHMIC,
+        "n²": ComplexityClass.QUADRATIC,
+        "n^2": ComplexityClass.QUADRATIC,
+        "n³": ComplexityClass.CUBIC,
+        "n^3": ComplexityClass.CUBIC,
+        "2^n": ComplexityClass.EXPONENTIAL,
+        "n!": ComplexityClass.FACTORIAL,
     }
-
-    return classes.get(clean, "Polinomial")
-
-def _is_space_optimal(auxiliary_space: str) -> bool:
-    """Verifica si el espacio auxiliar es óptimo"""
-    clean = auxiliary_space.replace("O(", "").replace(")", "")
-    return clean in ["1", "log n"]
+    
+    return mapping.get(clean, ComplexityClass.POLYNOMIAL)
