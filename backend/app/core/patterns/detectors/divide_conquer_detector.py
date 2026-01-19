@@ -35,37 +35,37 @@ class DivideConquerDetector(BasePatternDetector):
                 name="problem_division",
                 description="División clara del problema (n/2, mid, partición)",
                 found=False,
-                weight=5.0
+                weight=0.23
             ),
             PatternIndicator(
                 name="recursive_solution",
                 description="Resolución recursiva de subproblemas INDEPENDIENTES",
                 found=False,
-                weight=4.0
+                weight=0.20
             ),
             PatternIndicator(
                 name="solution_combination",
                 description="Combinación de soluciones parciales",
                 found=False,
-                weight=3.5
+                weight=0.17
             ),
             PatternIndicator(
                 name="base_case",
                 description="Caso base para problemas pequeños",
                 found=False,
-                weight=2.5
+                weight=0.12
             ),
             PatternIndicator(
                 name="balanced_division",
                 description="División balanceada (O(n/2) típicamente)",
                 found=False,
-                weight=2.5
+                weight=0.12
             ),
             PatternIndicator(
                 name="no_exhaustive_search",
                 description="SIN exploración exhaustiva (no es backtracking)",
                 found=False,
-                weight=3.0
+                weight=0.15
             ),
         ]
 

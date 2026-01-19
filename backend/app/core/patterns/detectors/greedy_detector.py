@@ -35,25 +35,25 @@ class GreedyDetector(BasePatternDetector):
                 name="local_optimization",
                 description="Selección de mejor opción local",
                 found=False,
-                weight=4.0
+                weight=0.35
             ),
             PatternIndicator(
                 name="iterative_approach",
                 description="Enfoque iterativo (no recursivo)",
                 found=False,
-                weight=3.0
+                weight=0.26
             ),
             PatternIndicator(
                 name="no_backtracking",
                 description="Sin retroceso en decisiones",
                 found=False,
-                weight=2.5
+                weight=0.22
             ),
             PatternIndicator(
                 name="selection_pattern",
                 description="Patrón de selección/comparación",
                 found=False,
-                weight=2.0
+                weight=0.17
             )
         ]
 

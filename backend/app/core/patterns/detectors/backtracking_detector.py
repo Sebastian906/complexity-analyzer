@@ -35,25 +35,25 @@ class BacktrackingDetector(BasePatternDetector):
                 name="loop_over_candidates",
                 description="Loop que itera sobre candidatos/opciones",
                 found=False,
-                weight=6.0
+                weight=0.27
             ),
             PatternIndicator(
                 name="recursive_exploration",
                 description="Llamada recursiva dentro del loop",
                 found=False,
-                weight=6.0
+                weight=0.27
             ),
             PatternIndicator(
                 name="state_reversal",
                 description="Reversión de estado después de recursión",
                 found=False,
-                weight=5.0
+                weight=0.26
             ),
             PatternIndicator(
                 name="candidate_validation",
                 description="Validación de candidatos",
                 found=False,
-                weight=3.5
+                weight=0.20
             ),
         ]
 

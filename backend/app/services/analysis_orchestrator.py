@@ -137,22 +137,16 @@ class AnalysisOrchestrator:
             except ParserException as e:
                 logger.error(f"Error en parsing: {e}")
                 errors.append(f"Error de parsing: {e}")
-                # PROBLEMA: Retorna INMEDIATAMENTE sin intentar el análisis
-                return self._create_result(
-                    started_at=started_at,
-                    start_time=start_time,
-                    algorithm_name="unknown",
-                    algorithm_info=AlgorithmInfo(  # DEBE crear un placeholder
-                        name="unknown",
-                        parameters=[],
-                        has_recursion=False,
-                        has_loops=False,
-                        max_nesting_depth=0,
-                        total_lines=0,
-                        total_statements=0
-                    ),
-                    errors=errors,
-                    warnings=warnings,
+
+                # CREAR PLACEHOLDER EN LUGAR DE RETORNAR
+                algorithm_info = AlgorithmInfo(
+                    name="unknown",
+                    parameters=[],
+                    has_recursion=False,
+                    has_loops=False,
+                    max_nesting_depth=0,
+                    total_lines=len(request.code.splitlines()),
+                    total_statements=0
                 )
 
             # PASO 2: ANÁLISIS DE COMPLEJIDAD
@@ -167,35 +161,24 @@ class AnalysisOrchestrator:
                         analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
                     )
 
-                    # VERIFICAR QUE analysis_result NO SEA NONE
+                    # AGREGAR VALIDACIÓN
                     if analysis_result is None:
                         logger.error("AnalyzerEngine retornó None")
                         errors.append("Analyzer retornó resultado nulo")
                     else:
-                        # Convertir a schemas
+                        # Convertir a schemas...
                         complexity_result = self._build_complexity_analysis(analysis_result)
-                        
-                        if analysis_result.space_analysis:
-                            space_result = self._build_space_complexity(analysis_result.space_analysis)
-                        
-                        if analysis_result.temporal_recurrence:
-                            recurrence_temporal = self._build_recurrence_equation(
-                                analysis_result.temporal_recurrence
-                            )
-                        
-                        if analysis_result.line_by_line:
-                            line_by_line_result = self._build_line_by_line(
-                                analysis_result.line_by_line,
-                                analysis_result.big_o
-                            )
+                        # ...resto del código
 
                 except AnalyzerException as e:
-                    logger.warning(f"Error en análisis de complejidad: {e}")
+                    # CAMBIO CRÍTICO: Agregar a errors en vez de solo warnings
+                    logger.error(f"Error en análisis de complejidad: {e}")
+                    errors.append(f"Error en análisis de complejidad: {e}")
+                    # También mantener warning para info adicional
                     warnings.append(f"Análisis de complejidad parcial: {e}")
-                    # NO SE ESTÁ AGREGANDO A errors, SOLO A warnings
-                    # Por eso result.success puede ser True pero complexity es None
+
                 except Exception as e:
-                    # CAPTURAR CUALQUIER OTRO ERROR
+                    # NUEVO: Capturar cualquier otro error
                     logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
                     errors.append(f"Error en análisis: {e}")
 
@@ -354,7 +337,7 @@ class AnalysisOrchestrator:
         lines = [
             LineExecution(
                 line_number=line.line_number,
-                code=line.code,
+                code=getattr(line, 'code', getattr(line, 'statement', '')),  
                 execution_count=line.execution_count,
                 statement_type=line.statement_type,
                 complexity_contribution=line.complexity_contribution,
@@ -382,13 +365,31 @@ class AnalysisOrchestrator:
             min_confidence=request.pattern_options.min_confidence
         )
 
-        # Convertir a schemas
-        patterns_found = [
-            PatternMatch(
-                pattern_type=p.pattern.pattern_type,
-                pattern_name=p.pattern.pattern_name,
-                confidence=p.pattern.confidence,
-                confidence_level=ConfidenceLevelEnum(p.pattern.confidence_level.value),
+        # MAPEAR atributos del core al schema
+        # result del core tiene: all_patterns, primary_pattern, confident_patterns
+        # schema de API necesita: patterns_found, scored_patterns, primary_pattern
+
+        # Verificar estructura ANTES de intentar convertir
+        if not hasattr(result, 'all_patterns'):
+            logger.error("PatternDetector retornó objeto sin estructura esperada")
+            return PatternDetectionResult(
+                patterns_found=[],
+                scored_patterns=[],
+                primary_pattern=None,
+                confident_patterns=[],
+                summary="Error en detección de patrones",
+                pattern_count=0,
+                metadata={}
+            )
+
+        # Convertir ScoredPattern del core a PatternMatch del schema
+        patterns_found = []
+        for scored in result.all_patterns:  # Usar all_patterns
+            pattern_match = PatternMatch(
+                pattern_type=scored.pattern.pattern_type,
+                pattern_name=scored.pattern.pattern_name,
+                confidence=scored.pattern.confidence,
+                confidence_level=ConfidenceLevelEnum(scored.pattern.confidence_level.value),
                 indicators_found=[
                     PatternIndicator(
                         name=ind.name,
@@ -398,7 +399,7 @@ class AnalysisOrchestrator:
                         evidence=ind.evidence,
                         location=ind.location,
                     )
-                    for ind in p.pattern.indicators_found
+                    for ind in scored.pattern.indicators_found
                 ],
                 indicators_missing=[
                     PatternIndicator(
@@ -409,15 +410,15 @@ class AnalysisOrchestrator:
                         evidence=ind.evidence,
                         location=ind.location,
                     )
-                    for ind in p.pattern.indicators_missing
+                    for ind in scored.pattern.indicators_missing
                 ],
-                reasoning=p.pattern.reasoning,
-                typical_complexity=p.pattern.typical_complexity,
-                metadata=p.pattern.metadata,
+                reasoning=scored.pattern.reasoning,
+                typical_complexity=scored.pattern.typical_complexity,
+                metadata=scored.pattern.metadata,
             )
-            for p in result.patterns_found
-        ]
+            patterns_found.append(pattern_match)
 
+        # Convertir scored_patterns (con scoring)
         scored_patterns = [
             ScoredPattern(
                 pattern=PatternMatch(
@@ -460,9 +461,10 @@ class AnalysisOrchestrator:
                 conflicts=sp.conflicts,
                 rank=sp.rank,
             )
-            for sp in result.scored_patterns
+            for sp in result.all_patterns  # Usar all_patterns
         ]
 
+        # Convertir primary_pattern
         primary_pattern = None
         if result.primary_pattern:
             sp = result.primary_pattern
@@ -508,6 +510,7 @@ class AnalysisOrchestrator:
                 rank=sp.rank,
             )
 
+        # Convertir confident_patterns
         confident_patterns = [
             ScoredPattern(
                 pattern=PatternMatch(
@@ -554,12 +557,12 @@ class AnalysisOrchestrator:
         ]
 
         return PatternDetectionResult(
-            patterns_found=patterns_found,
+            patterns_found=patterns_found,  # Usar patterns_found
             scored_patterns=scored_patterns,
             primary_pattern=primary_pattern,
             confident_patterns=confident_patterns,
             summary=result.summary,
-            pattern_count=result.pattern_count,
+            pattern_count=len(patterns_found),  # Contar patterns_found
             metadata=result.metadata,
         )
 
@@ -694,16 +697,14 @@ class AnalysisOrchestrator:
         warnings: list[str] = None,
     ) -> CompleteAnalysisResult:
         """Crea el resultado final usando schemas."""
-        completed_at = datetime.utcnow()
-        duration = time.time() - start_time
 
-        # AGREGAR VALIDACIÓN:
+        # AGREGAR VALIDACIÓN
         if errors is None:
             errors = []
         if warnings is None:
             warnings = []
-        
-        # Si no hay errores pero tampoco hay complexity, investigar
+
+        # NUEVO: Detectar fallo silencioso
         if not errors and complexity is None:
             logger.warning("No hay errores pero complexity es None - posible fallo silencioso")
             errors.append("Análisis de complejidad no completado")
@@ -712,8 +713,8 @@ class AnalysisOrchestrator:
         metadata = AnalysisMetadata(
             timing=TimingMetadata(
                 started_at=started_at,
-                completed_at=completed_at,
-                duration_ms=duration * 1000,
+                # completed_at=completed_at,
+                # duration_ms=duration * 1000,
             ),
             resources=None,
             version="1.0.0",
@@ -733,9 +734,9 @@ class AnalysisOrchestrator:
         recommendations = self._generate_recommendations(complexity, patterns)
 
         return CompleteAnalysisResult(
-            success=len(errors or []) == 0,
+            success=len(errors) == 0,
             message="Análisis completado" if not errors else "Análisis con errores",
-            timestamp=completed_at,
+            # timestamp=completed_at,
             algorithm_name=algorithm_name,
             algorithm_info=algorithm_info,
             complexity=complexity,

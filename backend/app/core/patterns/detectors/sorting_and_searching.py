@@ -20,10 +20,11 @@ class SortingDetector(BasePatternDetector):
         self.description = "Algoritmo de ordenamiento"
         self.typical_complexity = "O(n²) a O(n log n)"
 
+        # Los pesos deben estar en el rango [0.0, 1.0] para cumplir con el validador de Pydantic
         self._indicators = [
-            PatternIndicator("swap_operations", "Operaciones de intercambio", False, 4.0),
-            PatternIndicator("comparison_loop", "Loop de comparación", False, 3.5),
-            PatternIndicator("array_reordering", "Reordenamiento de array", False, 3.0)
+            PatternIndicator("swap_operations", "Operaciones de intercambio", False, 0.4),
+            PatternIndicator("comparison_loop", "Loop de comparación", False, 0.35),
+            PatternIndicator("array_reordering", "Reordenamiento de array", False, 0.3)
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:
@@ -125,24 +126,25 @@ class SearchingDetector(BasePatternDetector):
         self.description = "Algoritmo de búsqueda"
         self.typical_complexity = "O(log n) a O(n)"
 
+        # Los pesos deben estar en el rango [0.0, 1.0] para cumplir con el validador de Pydantic
         self._indicators = [
             PatternIndicator(
                 "search_structure", 
                 "Estructura de búsqueda clara", 
                 False, 
-                4.0
+                0.4
             ),
             PatternIndicator(
                 "target_comparison", 
                 "Comparación con valor objetivo", 
                 False, 
-                3.5
+                0.35
             ),
             PatternIndicator(
                 "early_return", 
                 "Retorno anticipado al encontrar", 
                 False, 
-                3.0
+                0.3
             ),
         ]
 
