@@ -33,12 +33,13 @@ class LinkedListDetector(BaseStructureDetector):
             "anterior", "head", "cabeza", "tail", "cola"
         }
 
+        # Corregir uso posicional y normalizar pesos al rango [0.0,1.0]
         self.indicators = [
-            StructureIndicator("Acceso a .next", "Navegación por next", 3.0),
-            StructureIndicator("Clase Node", "Definición de nodo", 2.5),
-            StructureIndicator("Travesía secuencial", "while node != null", 2.0),
-            StructureIndicator("Variable node/nodo", "Nombres típicos", 1.5),
-            StructureIndicator("Inserción con enlaces", "Manipulación next", 1.5),
+            StructureIndicator(name="Acceso a .next", description="Navegación por next", weight=1.0),
+            StructureIndicator(name="Clase Node", description="Definición de nodo", weight=0.83),
+            StructureIndicator(name="Travesía secuencial", description="while node != null", weight=0.67),
+            StructureIndicator(name="Variable node/nodo", description="Nombres típicos", weight=0.50),
+            StructureIndicator(name="Inserción con enlaces", description="Manipulación next", weight=0.50),
         ]
 
         self.operation_complexities = [

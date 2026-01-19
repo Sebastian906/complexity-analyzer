@@ -45,25 +45,25 @@ class BranchBoundDetector(BasePatternDetector):
                 "bound_tracking", 
                 "Tracking de cotas (upper/lower bound)", 
                 False, 
-                5.0  # MUY CRÍTICO
+                1.0  # normalized from 5.0
             ),
             PatternIndicator(
                 "best_solution_tracking", 
                 "Tracking de mejor solución encontrada", 
                 False, 
-                5.0  # MUY CRÍTICO
+                1.0  # normalized from 5.0
             ),
             PatternIndicator(
                 "pruning_by_bound", 
                 "Poda basada en comparación con cota", 
                 False, 
-                4.5  # MUY IMPORTANTE
+                0.9  # normalized from 4.5
             ),
             PatternIndicator(
                 "branch_exploration", 
                 "Exploración de ramas del árbol", 
                 False, 
-                3.0
+                0.6  # normalized from 3.0
             ),
         ]
 

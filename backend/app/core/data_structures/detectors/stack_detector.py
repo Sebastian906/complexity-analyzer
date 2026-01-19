@@ -44,36 +44,37 @@ class StackDetector(BaseStructureDetector):
         }
 
         # Indicadores de pilas
+        # Normalizar pesos al rango [0.0, 1.0]
         self.indicators = [
             StructureIndicator(
                 name="Operación push",
                 description="Llamada a push() o apilar()",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Operación pop",
                 description="Llamada a pop() o desapilar()",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Par push-pop",
                 description="Presencia de ambas operaciones (LIFO)",
-                weight=2.5
+                weight=0.83
             ),
             StructureIndicator(
                 name="Variable con nombre stack/pila",
                 description="Variable nombrada stack, pila o similar",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Acceso solo al tope",
                 description="Solo se accede al último elemento",
-                weight=1.5
+                weight=0.50
             ),
             StructureIndicator(
                 name="Patrón recursivo",
                 description="Uso de pila implícita en recursión",
-                weight=1.0
+                weight=0.33
             ),
         ]
 

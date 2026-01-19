@@ -45,36 +45,37 @@ class SetDetector(BaseStructureDetector):
         }
 
         # Indicadores de sets
+        # Normalizar pesos al rango [0.0, 1.0]
         self.indicators = [
             StructureIndicator(
                 name="Operación add/insert",
                 description="Llamada a add() o agregar()",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Operación contains",
                 description="Verificación de membresía (in, contains)",
-                weight=2.5
+                weight=0.83
             ),
             StructureIndicator(
                 name="Operación remove",
                 description="Eliminación de elementos",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Variable con nombre set/conjunto",
                 description="Variable nombrada set, conjunto o similar",
-                weight=2.5
+                weight=0.83
             ),
             StructureIndicator(
                 name="Operaciones de conjuntos",
                 description="Union, intersección, diferencia",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Sin acceso indexado",
                 description="No hay accesos por índice (no ordenado)",
-                weight=1.5
+                weight=0.50
             ),
         ]
 

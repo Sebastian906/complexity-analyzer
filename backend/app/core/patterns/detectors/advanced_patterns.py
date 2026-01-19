@@ -20,10 +20,11 @@ class QuantumAlgorithmsDetector(BasePatternDetector):
         self.description = "Algoritmo cuántico (requiere análisis especializado)"
         self.typical_complexity = "Variable"
 
+        # Pesos normalizados a escala [0.0, 1.0]
         self._indicators = [
-            PatternIndicator("quantum_gates", "Uso de puertas cuánticas", False, 4.0),
-            PatternIndicator("superposition", "Superposición", False, 3.5),
-            PatternIndicator("entanglement", "Entrelazamiento", False, 3.0)
+            PatternIndicator("quantum_gates", "Uso de puertas cuánticas", False, 0.8),
+            PatternIndicator("superposition", "Superposición", False, 0.7),
+            PatternIndicator("entanglement", "Entrelazamiento", False, 0.6)
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:
@@ -66,11 +67,12 @@ class BioInspiredDetector(BasePatternDetector):
         self.description = "Algoritmo inspirado en procesos biológicos"
         self.typical_complexity = "Variable"
 
+        # Pesos normalizados a escala [0.0, 1.0]
         self._indicators = [
-            PatternIndicator("population_variables", "Variables de población", False, 5.0),
-            PatternIndicator("evolutionary_ops", "Operadores evolutivos", False, 5.0),
-            PatternIndicator("fitness_function", "Función de fitness", False, 4.0),
-            PatternIndicator("selection_mechanism", "Mecanismo de selección", False, 3.0)
+            PatternIndicator("population_variables", "Variables de población", False, 1.0),
+            PatternIndicator("evolutionary_ops", "Operadores evolutivos", False, 1.0),
+            PatternIndicator("fitness_function", "Función de fitness", False, 0.8),
+            PatternIndicator("selection_mechanism", "Mecanismo de selección", False, 0.6)
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:
@@ -222,11 +224,12 @@ class ApproximationDetector(BasePatternDetector):
         self.description = "Algoritmo que aproxima solución óptima"
         self.typical_complexity = "Variable (polinomial típicamente)"
 
+        # Pesos normalizados a escala [0.0, 1.0]
         self._indicators = [
-            PatternIndicator("relaxation", "Relajación del problema", False, 4.0),
-            PatternIndicator("heuristic_choice", "Elección heurística", False, 3.5),
-            PatternIndicator("approximation_factor", "Factor de aproximación", False, 3.0),
-            PatternIndicator("polynomial_time", "Tiempo polinomial", False, 2.5)
+            PatternIndicator("relaxation", "Relajación del problema", False, 0.8),
+            PatternIndicator("heuristic_choice", "Elección heurística", False, 0.7),
+            PatternIndicator("approximation_factor", "Factor de aproximación", False, 0.6),
+            PatternIndicator("polynomial_time", "Tiempo polinomial", False, 0.5)
         ]
 
     def detect(self, ast: ASTNode) -> PatternMatch:

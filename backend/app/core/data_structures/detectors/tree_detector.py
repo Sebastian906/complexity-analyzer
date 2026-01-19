@@ -34,11 +34,11 @@ class TreeDetector(BaseStructureDetector):
         }
 
         self.indicators = [
-            StructureIndicator("Acceso left/right", "Navegación hijos", 3.0),
-            StructureIndicator("Clase TreeNode", "Definición nodo árbol", 2.5),
-            StructureIndicator("Recursión binaria", "Llamadas left y right", 2.5),
-            StructureIndicator("Variable tree/root", "Nombres típicos", 2.0),
-            StructureIndicator("Travesía recursiva", "DFS/BFS pattern", 1.5),
+            StructureIndicator("Acceso left/right", "Navegación hijos", 0.6),
+            StructureIndicator("Clase TreeNode", "Definición nodo árbol", 0.5),
+            StructureIndicator("Recursión binaria", "Llamadas left y right", 0.5),
+            StructureIndicator("Variable tree/root", "Nombres típicos", 0.4),
+            StructureIndicator("Travesía recursiva", "DFS/BFS pattern", 0.3),
         ]
 
         self.operation_complexities = [
