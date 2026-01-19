@@ -39,31 +39,31 @@ class DynamicProgrammingDetector(BasePatternDetector):
                 name="memoization_table",
                 description="Array/tabla para almacenar resultados",
                 found=False,
-                weight=4.0
+                weight=0.80
             ),
             PatternIndicator(
                 name="table_filling",
                 description="Llenado sistemático de tabla",
                 found=False,
-                weight=3.5
+                weight=0.70
             ),
             PatternIndicator(
                 name="overlapping_subproblems",
                 description="Reutilización de soluciones anteriores",
                 found=False,
-                weight=3.0
+                weight=0.60
             ),
             PatternIndicator(
                 name="optimal_substructure",
                 description="Construcción de solución óptima desde subsoluciones",
                 found=False,
-                weight=2.5
+                weight=0.50
             ),
             PatternIndicator(
                 name="bottom_up",
                 description="Enfoque bottom-up (iterativo)",
                 found=False,
-                weight=2.0
+                weight=0.40
             )
         ]
 

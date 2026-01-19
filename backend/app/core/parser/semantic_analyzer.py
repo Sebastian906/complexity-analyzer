@@ -312,8 +312,8 @@ class SemanticAnalyzer:
     def _check_variable_used(self, var_name: str):
         """Verifica si una variable ha sido declarada antes de usarse"""
         if var_name not in self.declared_vars:
-            self.warnings.append(
-                f"Variable '{var_name}' usada antes de ser declarada o inicializada"
+            self.errors.append(
+                f"Variable '{var_name}' usada sin declarar (validación semántica)"
             )
     
     def get_symbol_table(self) -> Dict[str, VariableInfo]:
