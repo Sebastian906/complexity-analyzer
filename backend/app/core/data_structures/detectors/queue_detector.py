@@ -30,11 +30,11 @@ class QueueDetector(BaseStructureDetector):
         }
 
         self.indicators = [
-            StructureIndicator("Operación enqueue", "Llamada a enqueue()", 3.0),
-            StructureIndicator("Operación dequeue", "Llamada a dequeue()", 3.0),
-            StructureIndicator("Par enqueue-dequeue", "Patrón FIFO", 2.5),
-            StructureIndicator("Variable queue/cola", "Nombre típico", 2.0),
-            StructureIndicator("Acceso frente y final", "Front y rear", 1.5),
+            StructureIndicator("Operación enqueue", "Llamada a enqueue()", 0.6),
+            StructureIndicator("Operación dequeue", "Llamada a dequeue()", 0.6),
+            StructureIndicator("Par enqueue-dequeue", "Patrón FIFO", 0.5),
+            StructureIndicator("Variable queue/cola", "Nombre típico", 0.4),
+            StructureIndicator("Acceso frente y final", "Front y rear", 0.3),
         ]
 
         self.operation_complexities = [

@@ -31,11 +31,11 @@ class DictionaryDetector(BaseStructureDetector):
         self.keywords = {"dict", "map", "diccionario", "mapa", "hash"}
 
         self.indicators = [
-            StructureIndicator("Acceso por clave", "map[key]", 3.0),
-            StructureIndicator("Operación put/set", "Insertar clave-valor", 2.5),
-            StructureIndicator("Operación get", "Obtener por clave", 2.5),
-            StructureIndicator("Variable dict/map", "Nombre típico", 2.0),
-            StructureIndicator("Búsqueda de clave", "contains/hasKey", 1.5),
+            StructureIndicator("Acceso por clave", "map[key]", 0.6),
+            StructureIndicator("Operación put/set", "Insertar clave-valor", 0.5),
+            StructureIndicator("Operación get", "Obtener por clave", 0.5),
+            StructureIndicator("Variable dict/map", "Nombre típico", 0.4),
+            StructureIndicator("Búsqueda de clave", "contains/hasKey", 0.3),
         ]
 
         self.operation_complexities = [

@@ -45,36 +45,37 @@ class HeapDetector(BaseStructureDetector):
         }
 
         # Indicadores de heaps
+        # Normalizar pesos al rango [0.0, 1.0]
         self.indicators = [
             StructureIndicator(
                 name="Operación insert",
                 description="Inserción con heapify up",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Operación extract (min/max)",
                 description="Extracción del elemento prioritario",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Operación heapify",
                 description="Función heapify detectada",
-                weight=2.5
+                weight=0.83
             ),
             StructureIndicator(
                 name="Variable con nombre heap",
                 description="Variable nombrada heap, montículo o priority",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Acceso a padre/hijos",
                 description="Cálculos parent, left, right típicos de heap",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Uso en heapsort",
                 description="Patrón de heapsort detectado",
-                weight=1.5
+                weight=0.50
             ),
         ]
 

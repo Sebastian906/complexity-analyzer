@@ -37,31 +37,32 @@ class ArrayDetector(BaseStructureDetector):
         self.description = "Estructura secuencial con acceso por índice"
 
         # Indicadores de arrays
+        # Normalizar pesos al rango [0.0, 1.0]
         self.indicators = [
             StructureIndicator(
                 name="Parámetro con corchetes",
                 description="Parámetro declarado como A[n] o A[]",
-                weight=3.0
+                weight=1.0
             ),
             StructureIndicator(
                 name="Acceso indexado",
                 description="Operaciones como A[i] o A[j]",
-                weight=2.5
+                weight=0.83
             ),
             StructureIndicator(
                 name="Iteración secuencial",
                 description="For loop sobre índices del array",
-                weight=2.0
+                weight=0.67
             ),
             StructureIndicator(
                 name="Múltiples accesos",
                 description="Accesos repetidos en diferentes contextos",
-                weight=1.5
+                weight=0.50
             ),
             StructureIndicator(
                 name="Asignación a índice",
                 description="Modificación de elementos via A[i] ← valor",
-                weight=1.5
+                weight=0.50
             ),
         ]
 

@@ -31,10 +31,10 @@ class HashTableDetector(BaseStructureDetector):
         self.keywords = {"hash", "bucket", "collision", "colision"}
 
         self.indicators = [
-            StructureIndicator("Función hash", "hash(key)", 3.0),
-            StructureIndicator("Variable hash_table", "Nombre típico", 2.5),
-            StructureIndicator("Manejo colisiones", "Chaining o probing", 2.0),
-            StructureIndicator("Acceso con hash", "table[hash(key)]", 2.0),
+            StructureIndicator("Función hash", "hash(key)", 0.6),
+            StructureIndicator("Variable hash_table", "Nombre típico", 0.5),
+            StructureIndicator("Manejo colisiones", "Chaining o probing", 0.4),
+            StructureIndicator("Acceso con hash", "table[hash(key)]", 0.4),
         ]
 
         self.operation_complexities = [

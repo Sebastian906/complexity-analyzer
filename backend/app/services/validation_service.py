@@ -232,14 +232,30 @@ class ValidationService:
             result.metadata["semantic_valid"] = is_valid
 
         except Exception as e:
-            logger.error(f"Error en validación semántica: {e}")
-            result.warnings.append(
-                ValidationIssue(
-                    severity=IssueSeverity.WARNING,
-                    message=f"Validación semántica incompleta: {e}",
-                    rule="semantic",
+            # Si fue una excepción semántica conocida, exponer los errores encontrados
+            from app.core.exceptions import SemanticErrorException as _SemErr
+
+            if isinstance(e, _SemErr):
+                # Agregar cada error semántico al resultado con severidad ERROR
+                for err in self.semantic_analyzer.errors:
+                    result.errors.append(
+                        ValidationIssue(
+                            severity=IssueSeverity.ERROR,
+                            message=err,
+                            rule="semantic",
+                        )
+                    )
+                result.is_valid = False
+                result.metadata["semantic_valid"] = False
+            else:
+                logger.error(f"Error en validación semántica: {e}")
+                result.warnings.append(
+                    ValidationIssue(
+                        severity=IssueSeverity.WARNING,
+                        message=f"Validación semántica incompleta: {e}",
+                        rule="semantic",
+                    )
                 )
-            )
 
     async def _validate_structural(
         self,

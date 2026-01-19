@@ -34,11 +34,11 @@ class GraphDetector(BaseStructureDetector):
         }
 
         self.indicators = [
-            StructureIndicator("Lista adyacencia", "adj[] o neighbors", 3.0),
-            StructureIndicator("Matriz adyacencia", "graph[i][j]", 2.5),
-            StructureIndicator("Variable graph", "Nombre típico", 2.0),
-            StructureIndicator("Travesía BFS/DFS", "Patrón de recorrido", 2.0),
-            StructureIndicator("Visitados/Marcados", "visited[]", 1.5),
+            StructureIndicator("Lista adyacencia", "adj[] o neighbors", 0.6),
+            StructureIndicator("Matriz adyacencia", "graph[i][j]", 0.5),
+            StructureIndicator("Variable graph", "Nombre típico", 0.4),
+            StructureIndicator("Travesía BFS/DFS", "Patrón de recorrido", 0.4),
+            StructureIndicator("Visitados/Marcados", "visited[]", 0.3),
         ]
 
         self.operation_complexities = [

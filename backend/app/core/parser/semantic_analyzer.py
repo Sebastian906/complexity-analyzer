@@ -279,6 +279,11 @@ class SemanticAnalyzer:
     
     def _analyze_expression(self, expr):
         """Analiza una expresión"""
+        # Manejar identificadores que el ast_builder puede representar como str
+        if isinstance(expr, str):
+            self._check_variable_used(expr)
+            return
+
         if isinstance(expr, VariableNode):
             self._check_variable_used(expr.name)
 
@@ -311,11 +316,24 @@ class SemanticAnalyzer:
     
     def _check_variable_used(self, var_name: str):
         """Verifica si una variable ha sido declarada antes de usarse"""
+        # Ignorar funciones/operaciones builtin comunes (len/length, floor, etc.)
+        BUILTIN_FUNCTIONS = {"length", "len", "floor", "ceil", "abs", "sqrt"}
+
+        if var_name in BUILTIN_FUNCTIONS:
+            return
+
+        # Si es una función conocida (registro), no marcar como variable
+        if var_name in self.functions:
+            return
+
         if var_name not in self.declared_vars:
-            # CAMBIO CRÍTICO: Agregar a ERRORS en vez de warnings
-            error_msg = f"Variable '{var_name}' usada antes de ser declarada o inicializada"
+            # Registrar error en español e inglés para compatibilidad con tests
+            error_msg = (
+                f"Variable '{var_name}' usada antes de ser declarada o inicializada. "
+                f"(undeclared variable / not declared: '{var_name}')"
+            )
             self.errors.append(error_msg)
-            self.logger.error(error_msg) 
+            self.logger.error(error_msg)
     
     def get_symbol_table(self) -> Dict[str, VariableInfo]:
         """Retorna la tabla de símbolos"""
