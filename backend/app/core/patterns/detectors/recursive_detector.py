@@ -30,25 +30,25 @@ class RecursiveDetector(BasePatternDetector):
                 name="recursive_calls",
                 description="Llamadas recursivas presentes",
                 found=False,
-                weight=0.90  # AUMENTADO de 4.0
+                weight=0.50
             ),
             PatternIndicator(
                 name="base_case",
                 description="Caso base para terminar recursión",
                 found=False,
-                weight=0.70  # AUMENTADO de 3.0
+                weight=0.35
             ),
             PatternIndicator(
                 name="recursive_case",
                 description="Caso recursivo que reduce el problema",
                 found=False,
-                weight=0.50  # AUMENTADO de 2.0
+                weight=0.25
             ),
             PatternIndicator(
                 name="tail_recursion",
                 description="Recursión de cola (optimizable)",
                 found=False,
-                weight=0.20
+                weight=0.10
             )
         ]
 

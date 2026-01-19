@@ -24,7 +24,6 @@ from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-
 @dataclass
 class VariableInfo:
     """Información sobre una variable"""
@@ -34,14 +33,12 @@ class VariableInfo:
     dimensions: List[Optional[int]] = field(default_factory=list)
     first_use_line: Optional[int] = None
 
-
 @dataclass
 class FunctionInfo:
     """Información sobre una función/algoritmo"""
     name: str
     parameters: List[ParameterNode] = field(default_factory=list)
     is_recursive: bool = False
-
 
 class SemanticAnalyzer:
     """
@@ -186,6 +183,11 @@ class SemanticAnalyzer:
         # Registrar la variable del lado izquierdo
         target_name = assignment.target.name
         
+        # 1. PRIMERO analizar la expresión del lado derecho
+        # (esto detecta variables no declaradas ANTES de declarar la nueva)
+        self._analyze_expression(assignment.value)
+
+        # 2. DESPUÉS registrar la variable del lado izquierdo
         if target_name not in self.symbol_table:
             # Primera vez que se usa esta variable
             var_info = VariableInfo(
@@ -194,12 +196,12 @@ class SemanticAnalyzer:
                 first_use_line=assignment.line
             )
             self.symbol_table[target_name] = var_info
-        
-        # Marcar como declarada
+
+        # Marcar como declarada DESPUÉS de analizar el lado derecho
         self.declared_vars.add(target_name)
         
         # Analizar la expresión del lado derecho
-        self._analyze_expression(assignment.value)
+        # self._analyze_expression(assignment.value)
     
     def _analyze_for_loop(self, for_loop: ForLoopNode):
         """Analiza un ciclo FOR"""
@@ -279,42 +281,41 @@ class SemanticAnalyzer:
         """Analiza una expresión"""
         if isinstance(expr, VariableNode):
             self._check_variable_used(expr.name)
-        
+
         elif isinstance(expr, BinaryOpNode):
             self._analyze_expression(expr.left)
             self._analyze_expression(expr.right)
-        
+
         elif isinstance(expr, UnaryOpNode):
             self._analyze_expression(expr.operand)
-        
+
         elif isinstance(expr, ArrayAccessNode):
             self._check_variable_used(expr.array_name)
             for index in expr.indices:
                 self._analyze_expression(index)
-        
+
         elif isinstance(expr, FunctionCallNode):
             # Verificar si es una llamada recursiva
             if expr.function_name == self.current_algorithm:
                 if self.current_algorithm in self.functions:
                     self.functions[self.current_algorithm].is_recursive = True
-            
+
             # Analizar argumentos
             for arg in expr.arguments:
                 self._analyze_expression(arg)
-        
+
         elif isinstance(expr, LValueNode):
             self._check_variable_used(expr.name)
             for index in expr.indices:
                 self._analyze_expression(index)
-        
-        # Literales y otros nodos no necesitan análisis
     
     def _check_variable_used(self, var_name: str):
         """Verifica si una variable ha sido declarada antes de usarse"""
         if var_name not in self.declared_vars:
-            self.errors.append(
-                f"Variable '{var_name}' usada sin declarar (validación semántica)"
-            )
+            # CAMBIO CRÍTICO: Agregar a ERRORS en vez de warnings
+            error_msg = f"Variable '{var_name}' usada antes de ser declarada o inicializada"
+            self.errors.append(error_msg)
+            self.logger.error(error_msg) 
     
     def get_symbol_table(self) -> Dict[str, VariableInfo]:
         """Retorna la tabla de símbolos"""

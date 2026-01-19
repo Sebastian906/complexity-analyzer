@@ -31,31 +31,31 @@ class BruteForceDetector(BasePatternDetector):
                 name="nested_loops",
                 description="Múltiples loops anidados",
                 found=False,
-                weight=0.80  # AUMENTADO de 3.0
+                weight=0.40
             ),
             PatternIndicator(
                 name="swap_pattern",
                 description="Patrón de intercambio (swap)",
                 found=False,
-                weight=0.85  # AUMENTADO de 2.5 - MUY IMPORTANTE
+                weight=0.45
             ),
             PatternIndicator(
                 name="exhaustive_search",
                 description="Búsqueda exhaustiva de soluciones",
                 found=False,
-                weight=0.50
+                weight=0.25
             ),
             PatternIndicator(
                 name="no_pruning",
                 description="Sin condiciones de poda",
                 found=False,
-                weight=0.40
+                weight=0.20
             ),
             PatternIndicator(
                 name="no_memoization",
                 description="Sin memoización",
                 found=False,
-                weight=0.30
+                weight=0.15
             ),
         ]
 

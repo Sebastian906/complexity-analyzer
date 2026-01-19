@@ -150,7 +150,7 @@ class AnalysisOrchestrator:
                 )
 
             # PASO 2: ANÁLISIS DE COMPLEJIDAD
-            if request.analyze_complexity and ast:  # Verificar que ast existe
+            if request.analyze_complexity and ast:
                 logger.info("Paso 2: Análisis de complejidad")
                 try:
                     analysis_result = self.analyzer_engine.analyze(
@@ -168,14 +168,19 @@ class AnalysisOrchestrator:
                     else:
                         # Convertir a schemas...
                         complexity_result = self._build_complexity_analysis(analysis_result)
-                        # ... resto del código
+                        # ...resto del código
 
                 except AnalyzerException as e:
-                    logger.error(f"Error en análisis de complejidad: {e}")  # CAMBIAR a ERROR
-                    errors.append(f"Análisis de complejidad: {e}")  # AGREGAR a errors
+                    # CAMBIO CRÍTICO: Agregar a errors en vez de solo warnings
+                    logger.error(f"Error en análisis de complejidad: {e}")
+                    errors.append(f"Error en análisis de complejidad: {e}")
+                    # También mantener warning para info adicional
+                    warnings.append(f"Análisis de complejidad parcial: {e}")
+
                 except Exception as e:
+                    # NUEVO: Capturar cualquier otro error
                     logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
-                    errors.append(f"Error inesperado: {e}")
+                    errors.append(f"Error en análisis: {e}")
 
             # PASO 3: DETECCIÓN DE PATRONES
             if request.analyze_patterns and ast:
@@ -699,7 +704,7 @@ class AnalysisOrchestrator:
         if warnings is None:
             warnings = []
 
-        # VALIDAR CONSISTENCY
+        # NUEVO: Detectar fallo silencioso
         if not errors and complexity is None:
             logger.warning("No hay errores pero complexity es None - posible fallo silencioso")
             errors.append("Análisis de complejidad no completado")
@@ -729,7 +734,7 @@ class AnalysisOrchestrator:
         recommendations = self._generate_recommendations(complexity, patterns)
 
         return CompleteAnalysisResult(
-            success=len(errors or []) == 0,
+            success=len(errors) == 0,
             message="Análisis completado" if not errors else "Análisis con errores",
             # timestamp=completed_at,
             algorithm_name=algorithm_name,

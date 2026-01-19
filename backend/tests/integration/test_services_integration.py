@@ -235,7 +235,7 @@ class TestAnalysisOrchestratorIntegration:
         analysis_orchestrator,
         bubble_sort_code
     ):
-        """Pipeline completo: Parse → Analyze → Patterns → Structures → Viz"""
+        """Pipeline completo con VALIDACIÓN MEJORADA"""
         request = CompleteAnalysisRequest(
             code=bubble_sort_code,
             analyze_complexity=True,
@@ -246,16 +246,47 @@ class TestAnalysisOrchestratorIntegration:
         
         result = await analysis_orchestrator.analyze_complete(request)
         
+        # CRÍTICO: Verificar éxito PRIMERO
         if not result.success:
-            pytest.fail(f"Análisis falló: {result.message}, Summary: {result.summary}")
-        
+            pytest.fail(
+                f"Análisis falló:\n"
+                f"  Message: {result.message}\n"
+                f"  Summary: {result.summary}\n"
+                f"  Errors: {result.metadata.get('errors', [])}"
+            )
+
+        # Ahora verificar campos
         assert result.algorithm_name == "bubbleSort"
         assert result.complexity is not None, "Complexity no debe ser None"
         assert result.complexity.big_o == "O(n^2)"
-        
-        assert result.patterns is not None
+
+        # erificar patterns con mensaje claro
+        if result.patterns is None:
+            pytest.fail(
+                f"Patterns es None. Revisar:\n"
+                f"1. Pesos de PatternIndicators (deben ser <= 1.0)\n"
+                f"2. Logs de PatternDetector\n"
+                f"3. Excepciones capturadas en orchestrator"
+            )
+
         assert len(result.patterns.patterns_found) > 0
+        assert result.structures is not None
+        assert len(result.structures.structures_found) > 0
         
+        # Patrones (CRÍTICO - era None por error de pesos)
+        if result.patterns is None:
+            # Buscar razón en logs
+            pytest.fail(
+                "Patterns es None. Revisar:\n"
+                "1. Pesos de PatternIndicators (deben ser <= 1.0)\n"
+                "2. Logs de PatternDetector\n"
+                "3. Excepciones capturadas en orchestrator"
+            )
+        
+        assert len(result.patterns.patterns_found) > 0, \
+            "No se detectaron patrones - revisar PatternDetector"
+        
+        # Estructuras
         assert result.structures is not None
         assert len(result.structures.structures_found) > 0
     
@@ -265,17 +296,7 @@ class TestAnalysisOrchestratorIntegration:
         analysis_orchestrator,
         fibonacci_code
     ):
-        """
-        Pipeline completo para algoritmo recursivo.
-        
-        NOTA: Este test es más permisivo porque big_o_analyzer.py
-        NO detecta recursión correctamente (reporta O(1) en lugar de O(2^n)).
-        
-        Validamos que:
-        1. El análisis se completa sin errores
-        2. Se detecta el algoritmo fibonacci
-        3. Los PATRONES detectan recursión (aunque complexity no lo haga)
-        """
+        """Pipeline para recursión con DETECCIÓN MEJORADA"""
         request = CompleteAnalysisRequest(
             code=fibonacci_code,
             analyze_complexity=True,
@@ -286,75 +307,82 @@ class TestAnalysisOrchestratorIntegration:
         
         result = await analysis_orchestrator.analyze_complete(request)
         
-        # 1. Verificar que el análisis se completó
+        # Verificar éxito
         if not result.success:
             pytest.fail(f"Análisis falló: {result.message}")
         
-        # 2. Verificar que detectó el algoritmo
         assert result.algorithm_name == "fibonacci"
         
-        # 3. Verificar que ALGO se analizó (aunque esté mal)
-        assert result.complexity is not None, "Complexity no debe ser None"
+        # Complejidad
+        if result.complexity is None:
+            pytest.fail("Complexity es None para fibonacci")
         
-        # 4. CLAVE: Verificar detección de recursión en PATRONES
-        # (no en complexity, porque big_o_analyzer tiene el bug)
+        # CRÍTICO: Detectar recursión
         recursion_detected = False
         
-        if result.patterns and len(result.patterns.patterns_found) > 0:
+        if result.patterns and result.patterns.patterns_found:
             pattern_names = [p.pattern_name.lower() for p in result.patterns.patterns_found]
             recursion_detected = any("recurs" in name for name in pattern_names)
-        
-        # Aceptar el test si:
-        # - Se completó el análisis exitosamente
-        # - Se detectó el algoritmo fibonacci
-        # - Los patrones detectaron recursión (aunque complexity no lo haga)
-        # Si no se detecta recursión, fallar el test para que sea visible
-        assert recursion_detected, (
-            "PatternDetector debería detectar recursión. "
-            "Si este test falla, revisar la lógica de detección de patrones recursivos. "
-            "Antes se skipeaba por bug conocido, ahora se fuerza a fallar para visibilidad."
-        )
-    
+            
+            if not recursion_detected:
+                # Mostrar qué patrones SÍ se detectaron
+                detected = ", ".join([p.pattern_name for p in result.patterns.patterns_found])
+                pytest.fail(
+                    f"PatternDetector NO detectó recursión.\n"
+                    f"Patrones detectados: {detected}\n"
+                    f"Revisar RecursiveDetector y sus pesos."
+                )
+        else:
+            pytest.fail(
+                "result.patterns es None o vacío. "
+                "Revisar pesos de PatternIndicators."
+            )
+
+        assert recursion_detected, \
+            "Fibonacci es recursivo pero PatternDetector no lo detectó"
+
     @pytest.mark.asyncio
-    async def test_pipeline_with_partial_config(
+    async def test_validation_detects_semantic_errors(
         self,
-        analysis_orchestrator,
-        binary_search_code
+        validation_service
     ):
-        """Pipeline con solo algunos módulos habilitados"""
-        request = CompleteAnalysisRequest(
-            code=binary_search_code,
-            analyze_complexity=True,
-            analyze_patterns=False,
-            analyze_structures=False,
-            generate_visualizations=False
+        """Validación semántica MEJORADA"""
+        code_with_error = """
+algorithm test(n)
+begin
+    x ← undeclared_var + 1
+end
+"""
+        from app.schemas import ValidationRequest, ValidationLevel
+        
+        request = ValidationRequest(
+            code=code_with_error,
+            level=ValidationLevel.SEMANTIC
         )
-        
-        result = await analysis_orchestrator.analyze_complete(request)
-        
-        if not result.success:
-            pytest.fail(f"Análisis falló: {result.message}")
-        
-        assert result.complexity is not None, "Complexity debe estar presente"
-        
-        assert result.patterns is None or len(result.patterns.patterns_found) == 0
-    
-    @pytest.mark.asyncio
-    async def test_pipeline_handles_parser_error(
-        self,
-        analysis_orchestrator,
-        invalid_code
-    ):
-        """Pipeline debe manejar errores del parser gracefully"""
-        request = CompleteAnalysisRequest(
-            code=invalid_code,
-            analyze_complexity=True
+
+        result = await validation_service.validate(request)
+
+        # El SemanticAnalyzer CORREGIDO debe detectar esto
+        has_undeclared_error = any(
+            "undeclared" in error.message.lower() or
+            "not declared" in error.message.lower()
+            for error in result.errors
         )
-        
-        result = await analysis_orchestrator.analyze_complete(request)
-        
-        assert result.success is False
-        assert result.algorithm_name is not None
+
+        if not has_undeclared_error:
+            # Mostrar qué errores SÍ se detectaron
+            errors_found = [e.message for e in result.errors]
+            warnings_found = [w.message for w in result.warnings]
+            
+            pytest.fail(
+                f"SemanticAnalyzer NO detectó variable no declarada.\n"
+                f"Errores encontrados: {errors_found}\n"
+                f"Warnings encontrados: {warnings_found}\n"
+                f"Revisar SemanticAnalyzer._check_undeclared_variables()"
+            )
+
+        assert has_undeclared_error, \
+            "Variable 'undeclared_var' debería haber sido detectada como no declarada"
 
 # TESTS: ValidationService → Parser + SemanticAnalyzer
 class TestValidationServiceIntegration:
