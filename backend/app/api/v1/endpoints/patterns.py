@@ -366,7 +366,7 @@ async def detect_specific_pattern(
             "success": True,
             "message": f"Patrón {match.pattern_name} detectado con confianza {match.confidence:.2%}",
             "pattern_detected": True,
-            "pattern_info": pattern_match.dict(),
+            "pattern_info": pattern_match.model_dump(),
         }
 
     except HTTPException:
@@ -407,7 +407,9 @@ async def get_available_patterns():
 
         return {
             "success": True,
-            "patterns": patterns_info,
+            "message": "Patrones disponibles",
+            "timestamp": None,
+            "data": patterns_info,
             "total": len(patterns_info)
         }
 

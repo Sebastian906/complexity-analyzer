@@ -277,74 +277,125 @@ class AlgorithmService:
         Returns:
             AlgorithmListResponse: Lista paginada de resultados
         """
-        results = list(self._algorithms.values())
-
-        # Aplicar filtros
-        if request.query:
-            query_lower = request.query.lower()
-            results = [
-                a for a in results
-                if query_lower in a.name.lower() or 
-                   (a.description and query_lower in a.description.lower())
-            ]
+        logger.info(f"Buscando algoritmos con criterios: {request}")
+    
+        # Construir filtro
+        filter_dict = {}
 
         if request.category:
-            results = [a for a in results if a.category == request.category]
+            filter_dict["category"] = request.category.value
 
         if request.tags:
-            results = [
-                a for a in results
-                if any(tag in a.tags for tag in request.tags)
-            ]
+            filter_dict["tags"] = {"$all": request.tags}    
 
         if request.complexity_class:
-            results = [
-                a for a in results
-                if a.complexity_class == request.complexity_class
+            filter_dict["complexity_class"] = request.complexity_class.value
+
+        # Si se pidió solo algoritmos ya analizados
+        if getattr(request, "analyzed_only", False):
+            filter_dict["analyzed"] = True
+        # Ejecutar búsqueda sobre el índice en memoria
+        try:
+            all_algos = list(self._algorithms.values())
+
+            # Aplicar filtros
+            def matches(algo: Algorithm) -> bool:
+                # category
+                if request.category:
+                    req_cat = getattr(request, 'category')
+                    # comparar por value si es Enum
+                    if hasattr(req_cat, 'value'):
+                        if algo.category.value != req_cat.value:
+                            return False
+                    else:
+                        if algo.category.value != str(req_cat):
+                            return False
+
+                # tags (todos deben estar presentes)
+                if request.tags:
+                    req_tags = [t.lower() for t in request.tags]
+                    algo_tags = [t.lower() for t in (algo.tags or [])]
+                    for t in req_tags:
+                        if t not in algo_tags:
+                            return False
+
+                # complexity_class
+                if request.complexity_class:
+                    req_cc = getattr(request, 'complexity_class')
+                    if hasattr(req_cc, 'value'):
+                        if (algo.complexity_class or '') != req_cc.value:
+                            return False
+                    else:
+                        if (algo.complexity_class or '') != str(req_cc):
+                            return False
+
+                # analyzed_only
+                if getattr(request, 'analyzed_only', False):
+                    if not getattr(algo, 'analyzed', False):
+                        return False
+
+                # free text query
+                if request.query:
+                    q = request.query.lower()
+                    if q not in (algo.name or '').lower() and q not in (algo.description or '').lower():
+                        # también buscar en tags
+                        if not any(q in t.lower() for t in (algo.tags or [])):
+                            return False
+
+                # date filters
+                if getattr(request, 'min_date', None):
+                    if algo.created_at < request.min_date:
+                        return False
+                if getattr(request, 'max_date', None):
+                    if algo.created_at > request.max_date:
+                        return False
+
+                return True
+
+            filtered = [a for a in all_algos if matches(a)]
+
+            # Convertir a AlgorithmMetadata
+            metadata_list = [
+                AlgorithmMetadata(
+                    id=a.id,
+                    name=a.name,
+                    category=a.category,
+                    tags=a.tags or [],
+                    complexity_class=a.complexity_class,
+                    big_o=a.big_o,
+                    created_at=a.created_at,
+                    analyzed=bool(a.analyzed),
+                )
+                for a in filtered
             ]
 
-        if request.analyzed_only:
-            results = [a for a in results if a.analyzed]
+            total = len(metadata_list)
 
-        if request.min_date:
-            results = [a for a in results if a.created_at >= request.min_date]
+            # Paginación: usar atributos opcionales 'limit' y 'offset' si vienen en el request
+            page_size = max(getattr(request, 'limit', None) or 10, 1)
+            offset = max(getattr(request, 'offset', None) or 0, 0)
+            page = max(offset // page_size + 1, 1)
+            total_pages = max((total + page_size - 1) // page_size, 1)
 
-        if request.max_date:
-            results = [a for a in results if a.created_at <= request.max_date]
+            # Slice
+            start = offset
+            end = offset + page_size
+            paged = metadata_list[start:end]
 
-        # Convertir a metadata (solo campos esenciales para listados)
-        metadata_list = [
-            AlgorithmMetadata(
-                id=a.id,
-                name=a.name,
-                category=a.category,
-                tags=a.tags,
-                complexity_class=a.complexity_class,
-                big_o=a.big_o,
-                created_at=a.created_at,
-                analyzed=a.analyzed,
+            return AlgorithmListResponse(
+                success=True,
+                message="Búsqueda completada exitosamente",
+                timestamp=None,
+                algorithms=paged,
+                total=total,
+                page=page,
+                page_size=page_size,
+                total_pages=total_pages,
             )
-            for a in results
-        ]
 
-        # Ordenar
-        # (Simplificado - en producción usar sort_by y ascending)
-        metadata_list.sort(key=lambda x: x.created_at, reverse=True)
-
-        # Paginación
-        total = len(metadata_list)
-        # Calcular offset basado en page y page_size
-        # (Asumiendo que request tiene estos campos o usar valores por defecto)
-        
-        return AlgorithmListResponse(
-            success=True,
-            message="Búsqueda completada exitosamente",
-            algorithms=metadata_list,  # En producción: aplicar paginación
-            total=total,
-            page=1,  # Agregar paginación real
-            page_size=len(metadata_list),
-            total_pages=1,
-        )
+        except Exception as e:
+            logger.error(f"Error en búsqueda: {e}")
+            raise
 
     # Helper Methods
     def _validate_code_size(self, code: str) -> None:

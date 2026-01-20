@@ -239,8 +239,8 @@ async def detect_specific_structure(
             "success": True,
             "message": f"Estructura {match.structure_name} detectada con confianza {match.confidence:.2%}",
             "structure_detected": True,
-            "structure_info": structure_match.dict(),
-            "usage_info": usage_info.dict() if usage_info else None,
+            "structure_info": structure_match.model_dump(),
+            "usage_info": usage_info.model_dump() if usage_info else None,
         }
 
     except HTTPException:
@@ -273,7 +273,9 @@ async def get_available_structures():
 
         return {
             "success": True,
-            "structures": structures,
+            "message": "Estructuras disponibles",
+            "timestamp": None,
+            "data": structures,
             "total": len(structures)
         }
 

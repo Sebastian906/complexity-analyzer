@@ -113,32 +113,25 @@ def sample_algorithms() -> dict:
         dict: Diccionario con códigos de ejemplo
     """
     return {
-        "simple": """
-algorithm simple()
+        "simple": """algorithm simple()
 begin
     x ← 1
-end
-        """.strip(),
+end""",
 
-        "with_params": """
-algorithm test(a, b, c)
+        "with_params": """algorithm test(a, b, c)
 begin
     result ← a + b + c
-end
-        """.strip(),
+end""",
 
-        "for_loop": """
-algorithm forLoop(n)
+        "for_loop": """algorithm forLoop(n)
 begin
     for i ← 1 to n do
     begin
         x ← x + 1
     end
-end
-        """.strip(),
+end""",
 
-        "nested_loops": """
-algorithm nestedLoops(n)
+        "nested_loops": """algorithm nestedLoops(n)
 begin
     for i ← 1 to n do
     begin
@@ -147,17 +140,16 @@ begin
             x ← x + 1
         end
     end
-end
-        """.strip(),
+end""",
 
-        "bubble_sort": """
-algorithm bubbleSort(A[n])
+        # CORREGIDO: Agregar paréntesis en las condiciones IF
+        "bubble_sort": """algorithm bubbleSort(A[1..n])
 begin
     for i ← 1 to n - 1 do
     begin
         for j ← 1 to n - i do
         begin
-            if A[j] > A[j + 1] then
+            if (A[j] > A[j + 1]) then
             begin
                 temp ← A[j]
                 A[j] ← A[j + 1]
@@ -165,102 +157,95 @@ begin
             end
         end
     end
-end
-        """.strip(),
+end""",
 
-        "binary_search": """
-algorithm binarySearch(A[n], x)
+        # CORREGIDO: Paréntesis en IF
+        "binary_search": """algorithm binarySearch(A[1..n], x)
 begin
     left ← 1
     right ← n
     
-    while left <= right do
+    while (left <= right) do
     begin
         mid ← (left + right) / 2
         
-        if A[mid] = x then
+        if (A[mid] = x) then
+        begin
             return mid
         end
         
-        if A[mid] < x then
+        if (A[mid] < x) then
+        begin
             left ← mid + 1
+        end
         else
+        begin
             right ← mid - 1
         end
     end
     
     return -1
-end
-        """.strip(),
+end""",
         
-        "fibonacci": """
-algorithm fibonacci(n)
+        # CORREGIDO: Paréntesis en IF
+        "fibonacci": """algorithm fibonacci(n)
 begin
-    if n <= 1 then
+    if (n <= 1) then
+    begin
         return n
     end
     return fibonacci(n - 1) + fibonacci(n - 2)
-end
-        """.strip(),
+end""",
         
-        # Agregados para tests de integración
-        "merge_sort": """
-algorithm mergeSort(A[n])
+        # CORREGIDO
+        "merge_sort": """algorithm mergeSort(A[1..n])
 begin
-    if n > 1 then
+    if (n > 1) then
     begin
         mid ← n / 2
         call mergeSort(A[1..mid])
         call mergeSort(A[mid+1..n])
         call merge(A, 1, mid, n)
     end
-end
-        """.strip(),
+end""",
         
-        "quicksort": """
-algorithm quicksort(A[n], low, high)
+        # CORREGIDO
+        "quicksort": """algorithm quicksort(A[1..n], low, high)
 begin
-    if low < high then
+    if (low < high) then
     begin
         pivot ← partition(A, low, high)
         call quicksort(A, low, pivot - 1)
         call quicksort(A, pivot + 1, high)
     end
-end
-        """.strip(),
+end""",
         
-        "linear_search": """
-algorithm linearSearch(A[n], x)
+        "linear_search": """algorithm linearSearch(A[1..n], x)
 begin
     for i ← 1 to n do
     begin
-        if A[i] = x then
+        if (A[i] = x) then
+        begin
             return i
         end
     end
     return -1
-end
-        """.strip(),
+end""",
         
-        "invalid_syntax": """
-algorithm invalid(n
+        # Código inválido (para tests de error)
+        "invalid_syntax": """algorithm invalid(n
 begin
     x ← 1
-end
-        """.strip(),
+end""",
         
-        "semantic_error": """
-algorithm semanticError(n)
+        "semantic_error": """algorithm semanticError(n)
 begin
     x ← undeclared_var + 1
-end
-        """.strip(),
+end""",
         
-        "empty": """
-algorithm empty()
+        "empty": """algorithm empty()
 begin
-end
-        """.strip(),
+end""",
     }
 
 # Fixtures individuales para algoritmos específicos

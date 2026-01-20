@@ -5,7 +5,7 @@ Endpoints REST para analizar algoritmos y obtener su complejidad.
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Query
 from app.schemas import (
     # Analysis Request Schemas
     ComplexityAnalysisRequest,
@@ -42,13 +42,13 @@ logger = setup_logger(__name__)
 router = APIRouter()
 
 @router.post(
-    "/analyze",
+    "/analyze-complete",
     response_model=CompleteAnalysisResult,
     status_code=status.HTTP_200_OK,
     summary="Analizar Complejidad Completa",
     description="Analiza completamente un algoritmo incluyendo ecuaciones de recurrencia"
 )
-async def analyze_complexity(request: ComplexityAnalysisRequest):
+async def analyze_complexity_complete(request: ComplexityAnalysisRequest):
     """
     Analiza la complejidad completa de un algoritmo.
     
@@ -72,10 +72,10 @@ async def analyze_complexity(request: ComplexityAnalysisRequest):
         engine = AnalyzerEngine()
         result = engine.analyze(
             ast,
-            analyze_line_by_line=request.options.analyze_line_by_line,
-            analyze_space=request.options.analyze_spatial,
-            analyze_recurrence=request.options.analyze_recurrence,
-            analyze_tight_bounds=request.options.calculate_tight_bounds
+            analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
+            analyze_space=request.options.analyze_spatial if request.options else True,
+            analyze_recurrence=request.options.analyze_recurrence if request.options else True,
+            analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
         )
 
         # 3. Construir AlgorithmInfo
@@ -172,12 +172,12 @@ async def analyze_complexity(request: ComplexityAnalysisRequest):
 
         # 9. Construir metadata
         from app.schemas.common import AnalysisMetadata, TimingMetadata
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         metadata = AnalysisMetadata(
             timing=TimingMetadata(
-                started_at=datetime.utcnow(),
-                completed_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
                 duration_ms=result.analysis_time * 1000 if hasattr(result, 'analysis_time') else 0,
             ),
             resources=None,
@@ -197,7 +197,7 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
         return CompleteAnalysisResult(
             success=True,
             message="Análisis completado exitosamente",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             algorithm_name=ast.algorithm.name,
             algorithm_info=algorithm_info,
             complexity=complexity,
@@ -224,6 +224,78 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
                 "error": "AnalysisError",
                 "message": str(e)
             }
+        )
+
+@router.post(
+    "/quick",
+    summary="Análisis Rápido",
+    description="Análisis simplificado sin detalles completos"
+)
+async def analyze_quick(code: str = Query(..., description="Código a analizar")):
+    """Análisis rápido de complejidad"""
+    try:
+        logger.info("Recibida solicitud de análisis rápido")
+        
+        parser = PseudocodeParser()
+        ast = parser.parse(code)
+        
+        from app.core.analyzer.complexity import BigOAnalyzer
+        analyzer = BigOAnalyzer()
+        big_o = analyzer.analyze(ast)
+        
+        return {
+            "success": True,
+            "big_o": big_o,
+            "algorithm_name": ast.algorithm.name,
+            "message": "Análisis rápido completado"
+        }
+    except Exception as e:
+        logger.error(f"Error en análisis rápido: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post(
+    "/line-by-line",
+    summary="Análisis Línea por Línea",
+    description="Análisis detallado de cada línea"
+)
+async def analyze_line_by_line(code: str = Query(..., description="Código a analizar")):
+    """Análisis línea por línea"""
+    try:
+        logger.info("Recibida solicitud de análisis línea por línea")
+        
+        parser = PseudocodeParser()
+        ast = parser.parse(code)
+        
+        from app.core.analyzer import LineByLineAnalyzer
+        analyzer = LineByLineAnalyzer()
+        result = analyzer.analyze(ast)
+        
+        lines_data = []
+        for line in result.lines:
+            lines_data.append({
+                "line_number": line.line_number,
+                "code": line.code,
+                "execution_count": line.execution_count,
+                "statement_type": line.statement_type,
+                "complexity_contribution": line.complexity_contribution,
+                "explanation": line.explanation
+            })
+        
+        return {
+            "success": True,
+            "algorithm_name": ast.algorithm.name,
+            "lines": lines_data,
+            "total_lines": len(lines_data),
+            "message": "Análisis línea por línea completado"
+        }
+    except Exception as e:
+        logger.error(f"Error en análisis línea por línea: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
 
 @router.post(
@@ -276,7 +348,7 @@ async def solve_recurrence_equation(
             "success": True,
             "equation": equation,
             "base_case": base_case,
-            "solution": solution.dict(),
+            "solution": solution.model_dump(),
         }
 
     except Exception as e:
