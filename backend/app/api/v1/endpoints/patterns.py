@@ -254,15 +254,7 @@ async def detect_patterns(request: PatternDetectionRequest):
             for sp in result.confident_patterns
         ]
 
-        return PatternDetectionResult(
-            patterns_found=patterns_found,
-            scored_patterns=scored_patterns,
-            primary_pattern=primary_pattern,
-            confident_patterns=confident_patterns,
-            summary=result.summary,
-            pattern_count=result.pattern_count,
-            metadata=result.metadata,
-        )
+        return result
 
     except Exception as e:
         logger.error(f"Error en detección de patrones: {e}", exc_info=True)

@@ -42,7 +42,7 @@ async def validate_code(request: ValidationRequest):
         
         result = await validation_service.validate(request)
         
-        # Helper: map service ValidationIssue (dataclass or pydantic) -> schema dict
+        # Helper: map service ValidationIssue -> schema dict
         def _map_issue(issue):
             # pydantic model
             if hasattr(issue, "model_dump"):
@@ -54,7 +54,7 @@ async def validate_code(request: ValidationRequest):
             else:
                 item = issue.__dict__ if hasattr(issue, "__dict__") else {}
 
-            # Normalize keys: service uses 'line'/'column', schema expects 'location'
+            # Normalize keys
             line = item.get("line") or item.get("lineno")
             column = item.get("column") or item.get("col")
 
@@ -62,16 +62,26 @@ async def validate_code(request: ValidationRequest):
             if line is not None or column is not None:
                 location = {"line": line, "column": column}
 
+            # Extraer valor del enum 
+            severity_value = item.get("severity")
+            if hasattr(severity_value, 'value'):
+                # Es un enum, obtener su valor
+                severity_str = severity_value.value
+            elif isinstance(severity_value, str):
+                # Ya es string, limpiar si tiene formato "IssueSeverity.ERROR"
+                severity_str = severity_value.split('.')[-1].lower() if '.' in severity_value else severity_value.lower()
+            else:
+                severity_str = "error"  # Default
+
             # Determine category from rule if available
             rule = item.get("rule")
             if rule in ("syntax", "semantic", "structural"):
                 category = rule
             else:
-                # fallback: map severity or unknown rules to 'style'
                 category = item.get("category") or "style"
 
             return {
-                "severity": str(item.get("severity")) if item.get("severity") is not None else "error",
+                "severity": severity_str,  # "error", "warning", "info", "hint"
                 "category": category,
                 "message": item.get("message", ""),
                 "description": item.get("description"),
@@ -87,7 +97,7 @@ async def validate_code(request: ValidationRequest):
         mapped_warnings = [_map_issue(i) for i in result.warnings]
         mapped_infos = [_map_issue(i) for i in result.infos]
 
-        # Build syntax/semantic/structural subsections expected by the response model
+        # Build syntax/semantic/structural subsections
         syntax_errors = [e for e in mapped_errors if e.get("rule") == "syntax" or e.get("category") == "syntax"]
         syntax_obj = {
             "is_valid": result.metadata.get("syntax_valid", not bool(syntax_errors)),
@@ -95,7 +105,6 @@ async def validate_code(request: ValidationRequest):
             "parse_tree_available": result.metadata.get("parse_tree_available", False),
         }
 
-        # Semantic and structural are optional; include them if metadata or issues exist
         semantic_errors = [e for e in mapped_errors if e.get("rule") == "semantic" or e.get("category") == "semantic"]
         semantic_obj = None
         if semantic_errors or result.metadata.get("semantic_valid") is not None:
