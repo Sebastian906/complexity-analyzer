@@ -200,21 +200,24 @@ class AlgorithmService:
             except Exception as e:
                 raise ValidationException(f"Código inválido: {e}")
 
-        # LÍNEA PROBLEMÁTICA (aprox. línea 169):
-        # updated_algorithm = Algorithm(
-        #     ...
-        #     language=request.language if request.language is not None else existing.language,
-        #     ...
-        # )
-        
-        # REEMPLAZAR CON (usar getattr para manejar None):
+        # Manejar campos opcionales con getattr()
+        # Los campos en AlgorithmUpdate son Optional, pueden ser None
+
+        # Helper para obtener valor o usar existing
+        def get_updated_value(field_name, default=None):
+            """Obtiene valor actualizado o mantiene el existente"""
+            new_val = getattr(request, field_name, None)
+            if new_val is not None:
+                return new_val
+            return getattr(existing, field_name, default)
+
         updated_algorithm = Algorithm(
             id=existing.id,
-            name=request.name if request.name is not None else existing.name,
-            description=request.description if request.description is not None else existing.description,
-            category=request.category if request.category is not None else existing.category,
-            tags=getattr(request, 'tags', None) if getattr(request, 'tags', None) is not None else existing.tags,
-            language=getattr(request, 'language', None) if getattr(request, 'language', None) is not None else existing.language,
+            name=get_updated_value('name'),
+            description=get_updated_value('description'),
+            category=get_updated_value('category'),
+            tags=get_updated_value('tags', []),
+            language=get_updated_value('language', 'pseudocode'),
             code=new_code,
             info=new_info,
             created_at=existing.created_at,
