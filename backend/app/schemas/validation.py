@@ -7,7 +7,7 @@ Schemas Pydantic para validación de algoritmos y código.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import BaseResponse, SourceLocation
 from app.schemas.algorithm import LanguageType
@@ -74,7 +74,38 @@ class ValidationIssue(BaseModel):
 # Validation Request
 class ValidationRequest(BaseModel):
     """Request para validación de código"""
-    code: str = Field(..., min_length=1, description="Código a validar")
+    code: str = Field(
+        ..., 
+        description="Código a validar (puede estar vacío para validación de error)"
+    )
+
+    # Agregado field_validator para validaciones personalizadas
+    @field_validator('code')
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        """
+        Valida el campo code.
+        
+        - Permite código vacío (se maneja en el endpoint)
+        - Valida longitud máxima
+        - No permite None
+        """
+        # No permitir None
+        if v is None:
+            raise ValueError('El código no puede ser None')
+        
+        # Validar longitud máxima (100KB = 100,000 caracteres)
+        max_length = 100_000
+        if len(v) > max_length:
+            raise ValueError(
+                f'El código es demasiado grande. '
+                f'Máximo permitido: {max_length:,} caracteres, '
+                f'recibido: {len(v):,} caracteres'
+            )
+        
+        # Retornar el valor validado
+        return v
+
     language: LanguageType = Field(
         LanguageType.PSEUDOCODE,
         description="Lenguaje del código"

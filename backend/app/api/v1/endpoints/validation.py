@@ -5,6 +5,7 @@ Endpoints para validar código pseudocódigo.
 """
 
 from fastapi import APIRouter, HTTPException, Query, status
+from datetime import datetime, timezone
 
 from app.schemas import (
     ValidationRequest,
@@ -38,23 +39,66 @@ async def validate_code(request: ValidationRequest):
     - COMPLETE: Todas las validaciones + best practices
     """
     try:
-        from datetime import datetime, timezone
+        # Validación explícita de código vacío
+        if not request.code or request.code.strip() == "":
+            logger.warning("Intento de validar código vacío")
+            return CompleteValidationResult(
+                success=False,
+                message="Validación fallida",
+                timestamp=datetime.now(timezone.utc),
+                is_valid=False,
+                errors=[{
+                    "severity": "error",
+                    "category": "syntax",
+                    "message": "El código no puede estar vacío",
+                    "description": "Se debe proporcionar al menos una línea de código válido",
+                    "location": None,
+                    "code_snippet": None,
+                    "rule": "syntax",
+                    "suggestion": "Proporcione código pseudocódigo válido",
+                    "metadata": {},
+                }],
+                warnings=[],
+                info=[],
+                error_count=1,
+                warning_count=0,
+                info_count=0,
+                hint_count=0,
+                lines_analyzed=0,
+                statements_analyzed=0,
+                summary="Error: Código vacío",
+                syntax={
+                    "is_valid": False,
+                    "errors": [{
+                        "severity": "error",
+                        "category": "syntax",
+                        "message": "El código no puede estar vacío",
+                        "location": None,
+                        "rule": "syntax",
+                    }],
+                    "parse_tree_available": False,
+                },
+                semantic=None,
+                structural=None,
+                best_practices=None,
+                overall_score=0.0,
+            )
         
+        # Proceder con validación normal
         result = await validation_service.validate(request)
         
         # Helper: map service ValidationIssue -> schema dict
         def _map_issue(issue):
-            # pydantic model
+            """Mapea ValidationIssue a diccionario para el schema"""
+            # Obtener atributos del issue (puede ser objeto o dict)
             if hasattr(issue, "model_dump"):
                 item = issue.model_dump()
-            # dict-like
             elif isinstance(issue, dict):
                 item = issue
-            # dataclass or plain object
             else:
                 item = issue.__dict__ if hasattr(issue, "__dict__") else {}
 
-            # Normalize keys
+            # Normalizar keys
             line = item.get("line") or item.get("lineno")
             column = item.get("column") or item.get("col")
 
@@ -62,7 +106,7 @@ async def validate_code(request: ValidationRequest):
             if line is not None or column is not None:
                 location = {"line": line, "column": column}
 
-            # Extraer valor del enum 
+            # Extraer valor del enum severity
             severity_value = item.get("severity")
             if hasattr(severity_value, 'value'):
                 # Es un enum, obtener su valor
@@ -137,33 +181,62 @@ async def validate_code(request: ValidationRequest):
                 "warnings": mapped_warnings,
             }
 
-        return {
-            "success": result.is_valid,
-            "message": "Validación completada",
-            "timestamp": datetime.now(timezone.utc),
-            "is_valid": result.is_valid,
-            "errors": mapped_errors,
-            "warnings": mapped_warnings,
-            "info": mapped_infos,
-            "error_count": len(result.errors),
-            "warning_count": len(result.warnings),
-            "info_count": len(result.infos),
-            "hint_count": 0,
-            "lines_analyzed": result.metadata.get("lines_count", 0),
-            "statements_analyzed": 0,
-            "summary": f"Validación {'exitosa' if result.is_valid else 'fallida'}: {result.total_issues} issues",
-            "syntax": syntax_obj,
-            "semantic": semantic_obj,
-            "structural": structural_obj,
-            "best_practices": None,
-            "overall_score": 1.0 if result.is_valid else 0.5,
-        }
+        # Construir respuesta final
+        return CompleteValidationResult(
+            success=result.is_valid,
+            message="Validación completada",
+            timestamp=datetime.now(timezone.utc),
+            is_valid=result.is_valid,
+            errors=mapped_errors,
+            warnings=mapped_warnings,
+            info=mapped_infos,
+            error_count=len(result.errors),
+            warning_count=len(result.warnings),
+            info_count=len(result.infos),
+            hint_count=0,
+            lines_analyzed=result.metadata.get("lines_count", 0),
+            statements_analyzed=0,
+            summary=f"Validación {'exitosa' if result.is_valid else 'fallida'}: {result.total_issues} issues",
+            syntax=syntax_obj,
+            semantic=semantic_obj,
+            structural=structural_obj,
+            best_practices=None,
+            overall_score=1.0 if result.is_valid else 0.5,
+        )
         
     except Exception as e:
-        logger.error(f"Error en validación: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        logger.error(f"Error en validación: {e}", exc_info=True)
+        # Retornar 200 con error en lugar de 400
+        return CompleteValidationResult(
+            success=False,
+            message="Error en validación",
+            timestamp=datetime.now(timezone.utc),
+            is_valid=False,
+            errors=[{
+                "severity": "error",
+                "category": "internal",
+                "message": f"Error interno: {str(e)}",
+                "description": None,
+                "location": None,
+                "code_snippet": None,
+                "rule": "internal",
+                "suggestion": None,
+                "metadata": {},
+            }],
+            warnings=[],
+            info=[],
+            error_count=1,
+            warning_count=0,
+            info_count=0,
+            hint_count=0,
+            lines_analyzed=0,
+            statements_analyzed=0,
+            summary=f"Error: {str(e)}",
+            syntax=None,
+            semantic=None,
+            structural=None,
+            best_practices=None,
+            overall_score=0.0,
         )
 
 @router.post(
@@ -172,8 +245,12 @@ async def validate_code(request: ValidationRequest):
     description="Validación rápida solo sintaxis (true/false)"
 )
 async def quick_validate(code: str = Query(..., description="Código a validar")):
-    """Validación rápida solo sintaxis"""
+    """Validación rápida solo sintaxis - ACTUALIZADO"""
     try:
+        # Manejar código vacío
+        if not code or code.strip() == "":
+            return {"is_valid": False, "error": "Código vacío"}
+        
         is_valid = await validation_service.quick_validate(code)
         return {"is_valid": is_valid}
     except Exception as e:

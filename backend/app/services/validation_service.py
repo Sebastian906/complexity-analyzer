@@ -45,7 +45,7 @@ class ValidationRequest:
     """Request de validación"""
     code: str
     level: ValidationLevel = ValidationLevel.COMPLETE
-    check_best_practices: bool = False
+    # check_best_practices: bool = False  # LÍNEA PROBLEMÁTICA
 
     # Límites personalizados (opcional)
     max_lines: Optional[int] = None
@@ -160,11 +160,8 @@ class ValidationService:
         if request.level in [ValidationLevel.STRUCTURAL, ValidationLevel.COMPLETE]:
             await self._validate_structural(request, result)
 
-        # Nivel 4: Best Practices (opcional)
-        # LÍNEA PROBLEMÁTICA (línea ~164):
-        # if request.check_best_practices:
-        
-        # REEMPLAZAR CON:
+        # Nivel 4: Best Practices (solo si es COMPLETE)
+        # Usar level en lugar de check_best_practices
         if request.level == ValidationLevel.COMPLETE:
             await self._validate_best_practices(request, result)
 
@@ -232,30 +229,15 @@ class ValidationService:
             result.metadata["semantic_valid"] = is_valid
 
         except Exception as e:
-            # Si fue una excepción semántica conocida, exponer los errores encontrados
-            from app.core.exceptions import SemanticErrorException as _SemErr
-
-            if isinstance(e, _SemErr):
-                # Agregar cada error semántico al resultado con severidad ERROR
-                for err in self.semantic_analyzer.errors:
-                    result.errors.append(
-                        ValidationIssue(
-                            severity=IssueSeverity.ERROR,
-                            message=err,
-                            rule="semantic",
-                        )
-                    )
-                result.is_valid = False
-                result.metadata["semantic_valid"] = False
-            else:
-                logger.error(f"Error en validación semántica: {e}")
-                result.warnings.append(
-                    ValidationIssue(
-                        severity=IssueSeverity.WARNING,
-                        message=f"Validación semántica incompleta: {e}",
-                        rule="semantic",
-                    )
+            logger.error(f"Error en validación semántica: {e}")
+            # No marcar como inválido por errores internos
+            result.warnings.append(
+                ValidationIssue(
+                    severity=IssueSeverity.WARNING,
+                    message=f"Validación semántica incompleta: {e}",
+                    rule="semantic",
                 )
+            )
 
     async def _validate_structural(
         self,
