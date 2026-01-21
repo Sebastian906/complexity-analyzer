@@ -472,14 +472,20 @@ class TestValidationEndpoints:
         
         response = client.post("/api/v1/validation/validate", json=payload)
         
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         
         # Acceso directo a campos (sin "data")
         assert data["success"] is True
-        assert data["is_valid"] is True
+        assert data["is_valid"] is True, f"Expected valid code, got errors: {data.get('errors', [])}"
         assert "syntax" in data
         assert data["syntax"]["is_valid"] is True
+        
+        # Verificar estructura completa
+        assert "errors" in data
+        assert "warnings" in data
+        assert isinstance(data["errors"], list)
+        assert len(data["errors"]) == 0, "Valid code should have no errors"
     
     def test_validate_code_complete(self, client, fibonacci_payload):
         """POST /api/v1/validation/validate con level=complete"""
@@ -498,6 +504,20 @@ class TestValidationEndpoints:
         assert data["is_valid"] is True
         assert "syntax" in data
         assert data["syntax"]["is_valid"] is True
+        
+        # Verificar que se ejecutaron todas las validaciones
+        assert "error_count" in data
+        assert "warning_count" in data
+        assert "summary" in data
+        
+        # En nivel COMPLETE, puede tener semantic y structural
+        if "semantic" in data and data["semantic"] is not None:
+            assert isinstance(data["semantic"], dict)
+            assert "is_valid" in data["semantic"]
+        
+        if "structural" in data and data["structural"] is not None:
+            assert isinstance(data["structural"], dict)
+            assert "is_valid" in data["structural"]
     
     def test_validate_invalid_code(self, client):
         """POST /api/v1/validation/validate debe detectar errores"""
@@ -513,9 +533,346 @@ class TestValidationEndpoints:
         
         # Cuando hay errores, is_valid debe ser False
         assert "is_valid" in data
-        assert data["is_valid"] is False
+        assert data["is_valid"] is False, "Invalid syntax should fail validation"
         assert "errors" in data
+        assert len(data["errors"]) > 0, "Should have at least one error"
+        
+        # Verificar que hay errores de sintaxis
+        syntax_errors = [e for e in data["errors"] if e.get("rule") == "syntax"]
+        assert len(syntax_errors) > 0, "Should have syntax errors"
+        
+        # Verificar estructura de error
+        first_error = data["errors"][0]
+        assert "severity" in first_error
+        assert "message" in first_error
+    
+    def test_validate_semantic_level(self, client):
+        """POST /api/v1/validation/validate con level=semantic"""
+        # Código sintácticamente correcto pero potencialmente con issues semánticos
+        code = """algorithm test(n)
+begin
+    x ← 1
+    y ← 2
+    result ← x + y
+end"""
+        
+        payload = {
+            "code": code,
+            "level": "semantic"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Debe validar sintaxis primero
+        assert "syntax" in data
+        assert data["syntax"]["is_valid"] is True, "Syntax should be valid"
+        
+        # Puede tener o no semantic validation dependiendo de la implementación
+        if "semantic" in data and data["semantic"] is not None:
+            assert isinstance(data["semantic"], dict)
+            assert "is_valid" in data["semantic"]
+    
+    def test_validate_structural_level(self, client, bubble_sort_payload):
+        """POST /api/v1/validation/validate con level=structural"""
+        payload = {
+            "code": bubble_sort_payload["code"],
+            "level": "structural"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["success"] is True
+        assert data["is_valid"] is True
+        
+        # Debe tener validaciones de sintaxis y estructura
+        assert "syntax" in data
+        assert data["syntax"]["is_valid"] is True
+        
+        # Puede tener información estructural
+        if "structural" in data and data["structural"] is not None:
+            structural = data["structural"]
+            assert isinstance(structural, dict)
+            
+            # Verificar campos esperados
+            if "max_depth_found" in structural:
+                assert isinstance(structural["max_depth_found"], int)
+            if "nodes_found" in structural:
+                assert isinstance(structural["nodes_found"], int)
+    
+    def test_validate_all_levels_sequentially(self, client, fibonacci_payload):
+        """Probar todos los niveles de validación secuencialmente"""
+        levels = ["syntax", "semantic", "structural", "complete"]
+        
+        for level in levels:
+            payload = {
+                "code": fibonacci_payload["code"],
+                "level": level
+            }
+            
+            response = client.post("/api/v1/validation/validate", json=payload)
+            
+            assert response.status_code == 200, f"Failed for level {level}"
+            data = response.json()
+            
+            assert "is_valid" in data, f"Missing is_valid for level {level}"
+            assert "syntax" in data, f"Missing syntax for level {level}"
+            
+            # Todos los niveles deben validar sintaxis exitosamente
+            assert data["syntax"]["is_valid"] is True, f"Syntax failed for level {level}"
+    
+    def test_validate_quick_endpoint(self, client, bubble_sort_payload):
+        """POST /api/v1/validation/validate/quick debe funcionar"""
+        response = client.post(
+            "/api/v1/validation/validate/quick",
+            params={"code": bubble_sort_payload["code"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "is_valid" in data
+        assert data["is_valid"] is True, "Valid code should pass quick validation"
+    
+    def test_validate_quick_with_invalid_code(self, client):
+        """Quick validate debe detectar código inválido"""
+        invalid_code = "algorithm invalid(n)\nbegin\n  x ← \nend"
+        
+        response = client.post(
+            "/api/v1/validation/validate/quick",
+            params={"code": invalid_code}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "is_valid" in data
+        assert data["is_valid"] is False, "Invalid code should fail quick validation"
+    
+    def test_validate_response_has_all_required_fields(self, client, bubble_sort_payload):
+        """Verificar que la respuesta tenga todos los campos requeridos"""
+        payload = {
+            "code": bubble_sort_payload["code"],
+            "level": "complete"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Campos obligatorios según CompleteValidationResult
+        required_fields = [
+            "success",
+            "message",
+            "timestamp",
+            "is_valid",
+            "errors",
+            "warnings",
+            "info",
+            "error_count",
+            "warning_count",
+            "info_count",
+            "hint_count",
+            "lines_analyzed",
+            "statements_analyzed",
+            "summary",
+            "syntax",
+            "overall_score"
+        ]
+        
+        for field in required_fields:
+            assert field in data, f"Missing required field: {field}"
+        
+        # Verificar tipos
+        assert isinstance(data["errors"], list)
+        assert isinstance(data["warnings"], list)
+        assert isinstance(data["info"], list)
+        assert isinstance(data["error_count"], int)
+        assert isinstance(data["warning_count"], int)
+        assert isinstance(data["info_count"], int)
+        assert isinstance(data["hint_count"], int)
+        assert isinstance(data["lines_analyzed"], int)
+        assert isinstance(data["summary"], str)
+        assert isinstance(data["syntax"], dict)
+        assert isinstance(data["overall_score"], (int, float))
+    
+    def test_validate_empty_code_handling(self, client):
+        """Validar comportamiento con código vacío"""
+        payload = {
+            "code": "",
+            "level": "syntax"
+        }
+
+        response = client.post("/api/v1/validation/validate", json=payload)
+
+        # Siempre debe ser 200
+        assert response.status_code == 200, \
+            f"Expected 200, got {response.status_code}: {response.text}"
+
+        data = response.json()
+
+        # Verificaciones específicas para código vacío
+        assert "is_valid" in data, "Response should have is_valid field"
+        assert data["is_valid"] is False, "Empty code should be invalid"
+
+        assert "errors" in data, "Response should have errors field"
+        assert len(data["errors"]) > 0, "Should have at least one error"
+
+        # Verificar mensaje de error
+        first_error = data["errors"][0]
+        assert "message" in first_error
+        assert "vacío" in first_error["message"].lower() or "empty" in first_error["message"].lower(), \
+            f"Error message should mention empty code, got: {first_error['message']}"
+
+        # Verificar estructura completa
+        assert data["error_count"] >= 1
+        assert data["success"] is False
+
+        # Verificar que syntax también indica error
+        if "syntax" in data and data["syntax"]:
+            assert data["syntax"]["is_valid"] is False
+    
+    def test_validate_code_with_multiple_errors(self, client):
+        """Validar código con múltiples errores"""
+        bad_code = """algorithm bad(n)
+begin
+    for i ← 1 to n
+        x ← 
+    while
+end"""
+        
+        payload = {
+            "code": bad_code,
+            "level": "syntax"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["is_valid"] is False
+        # Debe detectar múltiples errores
+        assert len(data["errors"]) >= 1, "Should detect at least one error"
+        assert data["error_count"] >= 1
+    
+    def test_validate_with_warnings_but_valid(self, client):
+        """Código válido pero con warnings (líneas largas, etc.)"""
+        # Código con línea muy larga (>100 chars) pero sintácticamente correcto
+        long_line_code = """algorithm test(n)
+begin
+    very_long_variable_name_that_exceeds_one_hundred_characters_when_combined_with_assignment ← 1
+end"""
+        
+        payload = {
+            "code": long_line_code,
+            "level": "complete"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Debe ser válido (sintaxis correcta)
+        assert data["is_valid"] is True
+        
+        # Puede tener warnings sobre líneas largas
+        if data["warning_count"] > 0:
+            assert len(data["warnings"]) > 0
+            # Verificar que los warnings tienen la estructura correcta
+            warning = data["warnings"][0]
+            assert "severity" in warning
+            assert warning["severity"] == "warning"
+    
+    def test_validate_nested_structures(self, client):
+        """Validar estructuras anidadas profundas"""
+        nested_code = """algorithm nestedTest(n)
+begin
+    for i ← 1 to n do
+    begin
+        for j ← 1 to n do
+        begin
+            for k ← 1 to n do
+            begin
+                x ← x + 1
+            end
+        end
+    end
+end"""
+        
+        payload = {
+            "code": nested_code,
+            "level": "structural"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Debe ser válido
+        assert data["is_valid"] is True
+        
+        # Debe tener información estructural
+        if "structural" in data and data["structural"]:
+            structural = data["structural"]
+            # Profundidad debe ser >= 3
+            if "max_depth_found" in structural:
+                assert structural["max_depth_found"] >= 3
+    
+    def test_validate_code_with_comments(self, client):
+        """Validar código con comentarios"""
+        code_with_comments = """algorithm test(n)
+begin
+    ► Este es un comentario
+    x ← 1
+    // Este es otro comentario
+    y ← 2
+end"""
+        
+        payload = {
+            "code": code_with_comments,
+            "level": "syntax"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Los comentarios deben ser ignorados y el código debe ser válido
+        assert data["is_valid"] is True
+        assert data["syntax"]["is_valid"] is True
+    
+    def test_validate_error_message_clarity(self, client):
+        """Verificar que los mensajes de error sean claros"""
+        invalid_code = "algorithm test(n)\nbegin\n  x ←\nend"
+        
+        payload = {
+            "code": invalid_code,
+            "level": "syntax"
+        }
+        
+        response = client.post("/api/v1/validation/validate", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["is_valid"] is False
         assert len(data["errors"]) > 0
+        
+        # Verificar que el error tiene mensaje descriptivo
+        error = data["errors"][0]
+        assert "message" in error
+        assert len(error["message"]) > 0, "Error message should not be empty"
+        assert error["severity"] in ["error", "warning", "info", "hint"]
 
 # TESTS: Export Endpoints
 class TestExportEndpoints:
