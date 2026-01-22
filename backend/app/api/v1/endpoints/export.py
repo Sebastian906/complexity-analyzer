@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
+from datetime import datetime
 from app.schemas import (
     # Export Schemas
     ExportRequest,
@@ -35,6 +36,8 @@ from app.infrastructure.database.models.mongo import (
 )
 from app.infrastructure.export import (
     ExporterFactory,
+    ExportConfig,
+    ExportData,
     export_analysis,
     export_to_multiple_formats,
     PDF_AVAILABLE,
@@ -43,7 +46,6 @@ from app.infrastructure.export import (
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
 router = APIRouter()
 
 # ENDPOINTS
@@ -62,7 +64,6 @@ async def get_available_formats():
     """
     available = ExporterFactory.get_available_formats()
     
-    # Crear templates info
     templates = [
         ExportTemplateInfo(
             template=ExportTemplate.MINIMAL,
@@ -172,13 +173,13 @@ async def export_algorithm_analysis(request: ExportRequest):
                 }
             )
         
-        # Determinar source: analysis_id o code
         algorithm = None
         analysis = None
         patterns = None
         
+        # Mejor lógica para determinar source
         if request.analysis_id:
-            # Buscar el algoritmo en la base de datos
+            # Opción 1: Usar análisis existente de DB
             algorithm = await Algorithm.get(request.analysis_id)
             if not algorithm:
                 raise HTTPException(
@@ -186,7 +187,6 @@ async def export_algorithm_analysis(request: ExportRequest):
                     detail=f"Algoritmo no encontrado: {request.analysis_id}"
                 )
             
-            # Buscar el análisis asociado
             analysis = await AnalysisResult.find_one(
                 AnalysisResult.algorithm_id == request.analysis_id
             )
@@ -196,33 +196,68 @@ async def export_algorithm_analysis(request: ExportRequest):
                     detail=f"No se encontró análisis para: {request.analysis_id}"
                 )
             
-            # Buscar patrones si está habilitado
             if ExportSection.PATTERNS in request.options.sections or ExportSection.ALL in request.options.sections:
                 patterns = await PatternDetection.find_one(
                     PatternDetection.algorithm_id == request.analysis_id
                 )
         
         elif request.code:
-            # Analizar código en tiempo real
-            from app.core.parser import parse_pseudocode
+            # Opción 2: Analizar código en tiempo real
+            from app.core.parser import PseudocodeParser
             from app.core.analyzer import AnalyzerEngine
             
-            ast = parse_pseudocode(request.code)
-            engine = AnalyzerEngine()
-            analysis_result = engine.analyze(ast)
+            logger.info("Analizando código para exportación en tiempo real...")
             
-            # Crear objetos temporales para exportar
-            # (En producción, usar modelos reales)
-            algorithm = type('obj', (object,), {
-                'name': request.algorithm_name or ast.algorithm.name,
-                'code': request.code,
-            })()
-            
-            analysis = type('obj', (object,), {
-                'big_o': analysis_result.big_o,
-                'omega': analysis_result.omega,
-                'theta': analysis_result.theta,
-            })()
+            try:
+                # Parsear código
+                parser = PseudocodeParser()
+                ast = parser.parse(request.code)
+                
+                # Analizar con el motor
+                engine = AnalyzerEngine()
+                analysis_result = engine.analyze(ast)
+                
+                # Crear objetos temporales para exportación
+                algorithm_name = request.algorithm_name or (
+                    ast.algorithm.name if ast.algorithm else "unknown"
+                )
+                
+                # CORRECCIÓN: Usar un mock object más robusto
+                class MockAlgorithm:
+                    def __init__(self):
+                        self.id = 'temp-export'
+                        self.name = algorithm_name
+                        self.code = request.code
+                        self.description = ''
+                        self.category = 'other'
+                        self.tags = []
+                        self.language = 'pseudocode'
+                        self.created_at = datetime.utcnow()
+                        self.analyzed = True
+                        self.big_o = getattr(analysis_result, 'big_o', 'O(n)')
+                
+                class MockAnalysis:
+                    def __init__(self):
+                        self.algorithm_id = 'temp-export'
+                        self.big_o = getattr(analysis_result, 'big_o', 'O(n)')
+                        self.omega = getattr(analysis_result, 'omega', 'Ω(1)')
+                        self.theta = getattr(analysis_result, 'theta', None)
+                        self.space_complexity = getattr(analysis_result, 'space_complexity', 'O(1)')
+                        self.is_recursive = getattr(analysis_result, 'is_recursive', False)
+                
+                algorithm = MockAlgorithm()
+                analysis = MockAnalysis()
+                patterns = None
+                
+            except Exception as parse_error:
+                logger.error(f"Error analizando código: {parse_error}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": "Error al analizar código",
+                        "message": str(parse_error)
+                    }
+                )
         
         else:
             raise HTTPException(
@@ -233,15 +268,20 @@ async def export_algorithm_analysis(request: ExportRequest):
         # Visualizaciones (opcional)
         visualizations = {} if request.options.include_visualizations else None
         
-        # Generar nombre de archivo
-        safe_name = "".join(c if c.isalnum() or c in "._- " else "_" for c in algorithm.name)
+        # Generar nombre de archivo seguro
+        safe_name = "".join(
+            c if c.isalnum() or c in "._- " else "_" 
+            for c in algorithm.name
+        )
         output_filename = request.filename or f"{safe_name}.{request.options.format.value}"
-        output_path = settings.EXPORTS_PATH / output_filename
         
-        # Exportar
-        from app.infrastructure.export import ExportConfig, ExportData
-        from datetime import datetime
+        # Usar carpeta específica según formato
+        format_dir = settings.get_export_path(request.options.format.value)
+        output_path = format_dir / output_filename
         
+        logger.debug(f"Export path: {output_path}")
+        
+        # Exportar usando la infraestructura
         export_data = ExportData(
             algorithm=algorithm,
             analysis=analysis,
@@ -269,8 +309,17 @@ async def export_algorithm_analysis(request: ExportRequest):
                 }
             )
         
-        # Preparar respuesta usando ExportResult del schema
+        # Preparar respuesta
         sections_included = [s.value for s in request.options.sections]
+        
+        # Manejar content para formatos de texto
+        content = None
+        if request.options.format in [ExportFormat.JSON, ExportFormat.MARKDOWN]:
+            if result.output_path and result.output_path.exists():
+                try:
+                    content = result.output_path.read_text(encoding='utf-8')
+                except Exception as e:
+                    logger.warning(f"No se pudo leer contenido: {e}")
         
         return ExportResult(
             success=True,
@@ -280,12 +329,12 @@ async def export_algorithm_analysis(request: ExportRequest):
             filename=output_filename,
             file_path=str(result.output_path) if result.output_path else None,
             file_size_bytes=result.output_path.stat().st_size if result.output_path and result.output_path.exists() else None,
-            content=result.output_path.read_text(encoding='utf-8') if request.options.format in [ExportFormat.JSON, ExportFormat.MARKDOWN] and result.output_path else None,
+            content=content,
             sections_included=sections_included,
             visualizations_count=len(visualizations) if visualizations else 0,
             total_pages=None,
             generated_at=datetime.utcnow(),
-            generation_time_ms=0,  # Calcular si es necesario
+            generation_time_ms=0,
         )
         
     except HTTPException:
@@ -357,15 +406,6 @@ async def export_multiple_formats(request: BatchExportRequest):
                 ))
                 failed += 1
         
-        # Crear ZIP si se solicita
-        zip_created = False
-        zip_path = None
-        zip_size = None
-        
-        if request.create_zip and successful > 0:
-            # TODO: Implementar creación de ZIP
-            pass
-        
         processing_time = (time.time() - start_time) * 1000
         
         return BatchExportResult(
@@ -376,9 +416,9 @@ async def export_multiple_formats(request: BatchExportRequest):
             total=len(request.items),
             successful=successful,
             failed=failed,
-            zip_created=zip_created,
-            zip_path=zip_path,
-            zip_size_bytes=zip_size,
+            zip_created=False,
+            zip_path=None,
+            zip_size_bytes=None,
             total_size_bytes=total_size,
             processing_time_ms=processing_time,
         )
@@ -405,34 +445,62 @@ async def download_export(filename: str):
         filename: Nombre del archivo a descargar
     """
     try:
-        file_path = settings.EXPORTS_PATH / filename
+        # Extraer extensión del archivo
+        file_ext = Path(filename).suffix.lstrip('.')
+        
+        # Mapeo de extensiones a subdirectorios
+        ext_to_dir = {
+            'json': 'json',
+            'md': 'markdown',
+            'pdf': 'pdf',
+            'xlsx': 'excel',
+            'csv': 'csv',
+            'html': 'html',
+            'svg': 'svg',
+            'dot': 'dot',
+            'mmd': 'mermaid',
+            'html': 'html',
+            'img': 'images',
+            'txt': 'txt',
+        }
+        
+        # Determinar subdirectorio
+        subdir = ext_to_dir.get(file_ext, file_ext)
+        file_path = settings.get_export_path(subdir) / filename
         
         if not file_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Archivo no encontrado: {filename}"
-            )
+            # Intentar buscar en EXPORTS_PATH base también
+            file_path = settings.EXPORTS_PATH / filename
+            if not file_path.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Archivo no encontrado: {filename}"
+                )
         
-        # Validar que el archivo esté dentro de EXPORTS_PATH (seguridad)
-        if not str(file_path.resolve()).startswith(str(settings.EXPORTS_PATH.resolve())):
+        # Validar seguridad: archivo debe estar en EXPORTS_PATH o subdirectorios
+        exports_base = str(settings.EXPORTS_PATH.resolve())
+        file_resolved = str(file_path.resolve())
+        
+        if not file_resolved.startswith(exports_base):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado"
             )
         
-        # Determinar media type basado en extensión
+        # Determinar media type
         media_types = {
-            ".pdf": "application/pdf",
-            ".json": "application/json",
-            ".md": "text/markdown",
-            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".csv": "text/csv",
-            ".html": "text/html",
-            ".svg": "image/svg+xml",
-            ".dot": "text/vnd.graphviz",
+            "pdf": "application/pdf",
+            "json": "application/json",
+            "md": "text/markdown",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "csv": "text/csv",
+            "html": "text/html",
+            "svg": "image/svg+xml",
+            "dot": "text/vnd.graphviz",
+            "mmd": "text/plain",
         }
         
-        media_type = media_types.get(file_path.suffix, "application/octet-stream")
+        media_type = media_types.get(file_ext, "application/octet-stream")
         
         return FileResponse(
             path=file_path,
@@ -465,7 +533,6 @@ async def cleanup_exports(
     """
     try:
         import time
-        from datetime import datetime, timedelta
 
         cutoff_time = time.time() - (older_than_days * 86400)
         deleted_count = 0

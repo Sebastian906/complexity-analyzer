@@ -7,23 +7,13 @@ Endpoints REST para detectar patrones algorítmicos en pseudocódigo.
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status
 from app.schemas import (
-    # Pattern Request Schemas
     PatternDetectionRequest,
-    PatternDetectionOptions,
-    
-    # Pattern Result Schemas
     PatternDetectionResult,
     PatternMatch,
     ScoredPattern,
     PatternIndicator,
     PatternStatistics,
-    PatternComparison,
-    PatternRecommendation,
-    
-    # Pattern Enums
     PatternType,
-    
-    # Common
     BaseResponse,
     ConfidenceLevelEnum,
 )
@@ -33,7 +23,6 @@ from app.core.patterns import PatternDetector
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
 router = APIRouter()
 
 @router.post(
@@ -67,36 +56,39 @@ async def detect_patterns(request: PatternDetectionRequest):
         # 1. Parsear el código
         parser = PseudocodeParser()
         ast = parser.parse(request.code)
-
         logger.info(f"Código parseado: {ast.algorithm.name}")
 
         # 2. Detectar patrones
         detector = PatternDetector()
         result = detector.detect(ast, request.options.min_confidence)
+        logger.info(f"Detección completada: {result.pattern_count} patrones encontrados")
 
-        logger.info(
-            f"Detección completada: {result.pattern_count} patrones encontrados"
-        )
-
-        # 3. Convertir resultado a schema Pydantic
-        
-        # Convertir patterns_found
-        patterns_found = [
-            PatternMatch(
-                pattern_type=p.pattern.pattern_type,
-                pattern_name=p.pattern.pattern_name,
-                confidence=p.pattern.confidence,
-                confidence_level=ConfidenceLevelEnum(p.pattern.confidence_level.value),
+        # 3. Convertir correctamente a schemas Pydantic
+        def convert_scored_pattern(scored_pattern) -> tuple[PatternMatch, ScoredPattern]:
+            """
+            Convierte un ScoredPattern interno a los schemas Pydantic.
+            
+            IMPORTANTE: El ScoredPattern interno puede tener diferentes atributos
+            que el schema Pydantic. Usamos getattr con defaults seguros.
+            """
+            pattern = scored_pattern.pattern
+            
+            # Crear PatternMatch desde el pattern interno
+            pattern_match = PatternMatch(
+                pattern_type=pattern.pattern_type,
+                pattern_name=pattern.pattern_name,
+                confidence=pattern.confidence,
+                confidence_level=ConfidenceLevelEnum(pattern.confidence_level.value),
                 indicators_found=[
                     PatternIndicator(
                         name=ind.name,
                         description=ind.description,
                         found=ind.found,
                         weight=ind.weight,
-                        evidence=ind.evidence,
-                        location=ind.location,
+                        evidence=getattr(ind, 'evidence', None) or "",
+                        location=getattr(ind, 'location', None) or "",
                     )
-                    for ind in p.pattern.indicators_found
+                    for ind in pattern.indicators_found
                 ],
                 indicators_missing=[
                     PatternIndicator(
@@ -104,157 +96,86 @@ async def detect_patterns(request: PatternDetectionRequest):
                         description=ind.description,
                         found=ind.found,
                         weight=ind.weight,
-                        evidence=ind.evidence,
-                        location=ind.location,
+                        evidence=getattr(ind, 'evidence', None) or "",
+                        location=getattr(ind, 'location', None) or "",
                     )
-                    for ind in p.pattern.indicators_missing
+                    for ind in pattern.indicators_missing
                 ],
-                reasoning=p.pattern.reasoning,
-                typical_complexity=p.pattern.typical_complexity,
-                metadata=p.pattern.metadata,
+                reasoning=pattern.reasoning,
+                typical_complexity=getattr(pattern, 'typical_complexity', None),
+                metadata=getattr(pattern, 'metadata', None) or {},
             )
-            for p in result.patterns_found
-        ]
-        
-        # Convertir scored_patterns
-        scored_patterns = [
-            ScoredPattern(
-                pattern=PatternMatch(
-                    pattern_type=sp.pattern.pattern_type,
-                    pattern_name=sp.pattern.pattern_name,
-                    confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
-                    indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
-                    ],
-                    indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
-                    ],
-                    reasoning=sp.pattern.reasoning,
-                    typical_complexity=sp.pattern.typical_complexity,
-                    metadata=sp.pattern.metadata,
-                ),
-                raw_score=sp.raw_score,
-                adjusted_score=sp.adjusted_score,
-                final_score=sp.final_score,
-                confidence_bonus=sp.confidence_bonus,
-                missing_penalty=sp.missing_penalty,
-                conflict_penalty=sp.conflict_penalty,
-                conflicts=sp.conflicts,
-                rank=sp.rank,
+            
+            # El ScoredPattern interno puede no tener todos estos atributos
+            # Usar getattr con defaults basados en confidence
+            confidence = pattern.confidence
+            
+            scored = ScoredPattern(
+                pattern=pattern_match,
+                raw_score=getattr(scored_pattern, 'raw_score', confidence),
+                adjusted_score=getattr(scored_pattern, 'adjusted_score', confidence),
+                final_score=getattr(scored_pattern, 'final_score', confidence),
+                confidence_bonus=getattr(scored_pattern, 'confidence_bonus', 0.0),
+                missing_penalty=getattr(scored_pattern, 'missing_penalty', 0.0),
+                conflict_penalty=getattr(scored_pattern, 'conflict_penalty', 0.0),
+                conflicts=getattr(scored_pattern, 'conflicts', None) or [],
+                rank=getattr(scored_pattern, 'rank', None),
             )
-            for sp in result.scored_patterns
-        ]
+            
+            return pattern_match, scored
         
-        # Patrón primario
+        # 4. Convertir todos los patrones
+        patterns_found = []
+        scored_patterns = []
+        
+        for sp in result.all_patterns:
+            pattern_match, scored_pattern = convert_scored_pattern(sp)
+            patterns_found.append(pattern_match)
+            scored_patterns.append(scored_pattern)
+        
+        # 5. Patrón primario
         primary_pattern = None
         if result.primary_pattern:
-            sp = result.primary_pattern
-            primary_pattern = ScoredPattern(
-                pattern=PatternMatch(
-                    pattern_type=sp.pattern.pattern_type,
-                    pattern_name=sp.pattern.pattern_name,
-                    confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
-                    indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
-                    ],
-                    indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
-                    ],
-                    reasoning=sp.pattern.reasoning,
-                    typical_complexity=sp.pattern.typical_complexity,
-                    metadata=sp.pattern.metadata,
-                ),
-                raw_score=sp.raw_score,
-                adjusted_score=sp.adjusted_score,
-                final_score=sp.final_score,
-                confidence_bonus=sp.confidence_bonus,
-                missing_penalty=sp.missing_penalty,
-                conflict_penalty=sp.conflict_penalty,
-                conflicts=sp.conflicts,
-                rank=sp.rank,
-            )
+            _, primary_pattern = convert_scored_pattern(result.primary_pattern)
         
-        # Patrones confiables
-        confident_patterns = [
-            ScoredPattern(
-                pattern=PatternMatch(
-                    pattern_type=sp.pattern.pattern_type,
-                    pattern_name=sp.pattern.pattern_name,
-                    confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
-                    indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
-                    ],
-                    indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
-                    ],
-                    reasoning=sp.pattern.reasoning,
-                    typical_complexity=sp.pattern.typical_complexity,
-                    metadata=sp.pattern.metadata,
-                ),
-                raw_score=sp.raw_score,
-                adjusted_score=sp.adjusted_score,
-                final_score=sp.final_score,
-                confidence_bonus=sp.confidence_bonus,
-                missing_penalty=sp.missing_penalty,
-                conflict_penalty=sp.conflict_penalty,
-                conflicts=sp.conflicts,
-                rank=sp.rank,
-            )
-            for sp in result.confident_patterns
-        ]
-
-        return result
+        # 6. Patrones confiables
+        confident_patterns = []
+        for sp in result.confident_patterns:
+            _, scored = convert_scored_pattern(sp)
+            confident_patterns.append(scored)
+        
+        # 7. Estadísticas
+        statistics = PatternStatistics(
+            total_patterns_detected=result.pattern_count,
+            high_confidence_patterns=result.high_confidence_count,
+            medium_confidence_patterns=len([
+                p for p in patterns_found 
+                if p.confidence_level == ConfidenceLevelEnum.MEDIUM
+            ]),
+            low_confidence_patterns=len([
+                p for p in patterns_found 
+                if p.confidence_level == ConfidenceLevelEnum.LOW
+            ]),
+            pattern_types_found=[p.pattern_type for p in patterns_found],
+            most_confident_pattern=result.primary_pattern_name if result.primary_pattern else None,
+            average_confidence=(
+                sum(p.confidence for p in patterns_found) / len(patterns_found) 
+                if patterns_found else 0.0
+            ),
+        )
+        
+        # 8. IMPORTANTE: Retornar usando model_validate para manejar propiedades computadas
+        return PatternDetectionResult(
+            patterns_found=patterns_found,
+            scored_patterns=scored_patterns,
+            primary_pattern=primary_pattern,
+            primary_pattern_name=result.primary_pattern_name,
+            confident_patterns=confident_patterns,
+            pattern_count=result.pattern_count,
+            high_confidence_count=result.high_confidence_count,
+            summary=result.summary,
+            statistics=statistics,
+        )
 
     except Exception as e:
         logger.error(f"Error en detección de patrones: {e}", exc_info=True)
@@ -333,8 +254,8 @@ async def detect_specific_pattern(
                     description=ind.description,
                     found=ind.found,
                     weight=ind.weight,
-                    evidence=ind.evidence,
-                    location=ind.location,
+                    evidence=ind.evidence or "",
+                    location=ind.location or "",
                 )
                 for ind in match.indicators_found
             ],
@@ -344,14 +265,14 @@ async def detect_specific_pattern(
                     description=ind.description,
                     found=ind.found,
                     weight=ind.weight,
-                    evidence=ind.evidence,
-                    location=ind.location,
+                    evidence=ind.evidence or "",
+                    location=ind.location or "",
                 )
                 for ind in match.indicators_missing
             ],
             reasoning=match.reasoning,
             typical_complexity=match.typical_complexity,
-            metadata=match.metadata,
+            metadata=match.metadata or {},
         )
 
         return {
@@ -387,8 +308,8 @@ async def get_available_patterns():
     """
     try:
         detector = PatternDetector()
-
         patterns_info = []
+        
         for det in detector.detectors:
             patterns_info.append({
                 "type": det.pattern_type.value,
