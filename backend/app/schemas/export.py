@@ -17,13 +17,13 @@ from app.schemas.common import BaseResponse
 class ExportFormat(str, Enum):
     """Formatos de exportación disponibles"""
     JSON = "json"
-    MARKDOWN = "markdown"
+    MARKDOWN = "md"
     PDF = "pdf"
     EXCEL = "excel"
     HTML = "html"
     CSV = "csv"
     DOT = "dot"              # Graphviz
-    MERMAID = "mermaid"      # Mermaid diagrams
+    MERMAID = "mmd"          # Mermaid diagrams
     SVG = "svg"              # SVG graphics
     TXT = "txt"              # Plain text
 

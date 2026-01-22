@@ -212,43 +212,100 @@ async def export_algorithm_analysis(request: ExportRequest):
                 # Parsear código
                 parser = PseudocodeParser()
                 ast = parser.parse(request.code)
-                
+
                 # Analizar con el motor
                 engine = AnalyzerEngine()
                 analysis_result = engine.analyze(ast)
-                
+
                 # Crear objetos temporales para exportación
                 algorithm_name = request.algorithm_name or (
                     ast.algorithm.name if ast.algorithm else "unknown"
                 )
-                
-                # CORRECCIÓN: Usar un mock object más robusto
+
+                # Usar un mock object más robusto
                 class MockAlgorithm:
-                    def __init__(self):
+                    def __init__(self, name: str, code: str):
                         self.id = 'temp-export'
-                        self.name = algorithm_name
-                        self.code = request.code
+                        self.name = name
+                        self.code = code
                         self.description = ''
                         self.category = 'other'
                         self.tags = []
                         self.language = 'pseudocode'
                         self.created_at = datetime.utcnow()
+                        self.updated_at = datetime.utcnow()
                         self.analyzed = True
-                        self.big_o = getattr(analysis_result, 'big_o', 'O(n)')
+                        self.analysis_count = 0
+
+                        # Campos adicionales que puede esperar el exportador
+                        self.author = None
+                        self.version = '1.0'
+                        self.is_public = False
+                        self.complexity_class = None
+                        self.typical_use_cases = []
                 
                 class MockAnalysis:
-                    def __init__(self):
+                    def __init__(self, analysis_result):
                         self.algorithm_id = 'temp-export'
+        
+                        # Complejidades básicas
                         self.big_o = getattr(analysis_result, 'big_o', 'O(n)')
                         self.omega = getattr(analysis_result, 'omega', 'Ω(1)')
                         self.theta = getattr(analysis_result, 'theta', None)
                         self.space_complexity = getattr(analysis_result, 'space_complexity', 'O(1)')
+
+                        self.temporal_recurrence = getattr(analysis_result, 'temporal_recurrence', None)
+                        self.spatial_recurrence = getattr(analysis_result, 'spatial_recurrence', None)
+
+                        # Propiedades del algoritmo
                         self.is_recursive = getattr(analysis_result, 'is_recursive', False)
-                
-                algorithm = MockAlgorithm()
-                analysis = MockAnalysis()
+                        self.recursion_depth = getattr(analysis_result, 'recursion_depth', 0)
+
+                        # Timestamps
+                        self.created_at = datetime.utcnow()
+                        
+                        self.analysis_time_ms = getattr(analysis_result, 'analysis_time_ms', 0.0)
+                        self.analysis_time = self.analysis_time_ms / 1000.0  # Convertir a segundos
+
+                        self.analyzer_version = '1.0.0'
+                        self.analysis_method = 'static'
+                        self.confidence_score = 0.95
+
+                        # Análisis detallado
+                        self.line_by_line = getattr(analysis_result, 'line_by_line', None)
+                        self.recurrence_equation = getattr(analysis_result, 'recurrence_equation', None)
+                        self.tight_bounds = getattr(analysis_result, 'tight_bounds', None)
+
+                        # Casos adicionales
+                        self.best_case = getattr(analysis_result, 'best_case', self.omega)
+                        self.worst_case = getattr(analysis_result, 'worst_case', self.big_o)
+                        self.average_case = getattr(analysis_result, 'average_case', self.theta)
+
+                        self.total_lines = getattr(analysis_result, 'total_lines', 0)
+                        self.total_operations = getattr(analysis_result, 'total_operations', 0)
+                        self.loop_count = getattr(analysis_result, 'loop_count', 0)
+                        self.conditional_count = getattr(analysis_result, 'conditional_count', 0)
+
+                        self.variables_used = getattr(analysis_result, 'variables_used', [])
+                        self.functions_called = getattr(analysis_result, 'functions_called', [])
+                        self.max_nesting_depth = getattr(analysis_result, 'max_nesting_depth', 0)
+
+                        # Metadata
+                        self.metadata = {
+                            'temporary_export': True,
+                            'source': 'direct_code_analysis'
+                        }
+
+                        # Estadísticas
+                        self.total_lines = 0
+                        self.total_operations = 0
+                        self.loop_count = 0
+                        self.conditional_count = 0
+
+                algorithm = MockAlgorithm(algorithm_name, request.code)
+                analysis = MockAnalysis(analysis_result)
                 patterns = None
-                
+
             except Exception as parse_error:
                 logger.error(f"Error analizando código: {parse_error}", exc_info=True)
                 raise HTTPException(

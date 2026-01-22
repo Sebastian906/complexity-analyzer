@@ -931,7 +931,7 @@ class TestExportEndpoints:
             "code": fibonacci_payload["code"],
             "algorithm_name": "Fibonacci Test",
             "options": {
-                "format": "markdown",
+                "format": "md",
                 "template": "standard",
                 "include_visualizations": False,
                 "include_metadata": True,
@@ -949,7 +949,7 @@ class TestExportEndpoints:
         
         assert data["success"] is True, f"Export failed: {data}"
         assert "filename" in data
-        assert data["format"] == "markdown"
+        assert data["format"] == "md"
         
         # Markdown debería tener content
         if "content" in data and data["content"]:
