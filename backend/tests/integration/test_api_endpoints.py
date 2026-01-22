@@ -375,20 +375,28 @@ class TestPatternsEndpoints:
         
         response = client.post("/api/v1/patterns/detect", json=payload)
         
-        # El endpoint tiene un error: 'PatternDetectionResult' object has no attribute 'patterns_found'
-        # Saltamos este test temporalmente
-        if response.status_code == 500:
-            pytest.skip("Endpoint tiene error de implementación - necesita corrección")
+        # No usar skip, dejar que falle si hay error
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
-        assert response.status_code == 200
         data = response.json()
-        assert "patterns_found" in data
-        assert len(data["patterns_found"]) > 0
         
-        # Debe detectar fuerza bruta por loops anidados
-        pattern_names = [p["pattern_name"] for p in data["patterns_found"]]
-        assert any("brute" in name.lower() or "fuerza" in name.lower() 
-                  for name in pattern_names)
+        # Verificar estructura del response
+        assert "patterns_found" in data, f"Missing 'patterns_found' in response: {data.keys()}"
+        assert isinstance(data["patterns_found"], list), "patterns_found debe ser una lista"
+        
+        # Verificar que detectó al menos un patrón
+        assert len(data["patterns_found"]) > 0, "No se detectaron patrones"
+        
+        # Verificar estructura de cada patrón
+        first_pattern = data["patterns_found"][0]
+        assert "pattern_name" in first_pattern
+        assert "confidence" in first_pattern
+        assert "pattern_type" in first_pattern
+        
+        # Bubble sort debería detectar brute force o sorting
+        pattern_types = [p["pattern_type"] for p in data["patterns_found"]]
+        assert any(pt in ["brute_force", "sorting"] for pt in pattern_types), \
+            f"Expected brute_force or sorting pattern, got: {pattern_types}"
     
     def test_detect_specific_pattern(self, client, fibonacci_payload):
         """POST /api/v1/patterns/detect-specific debe detectar patrón específico"""
@@ -883,45 +891,72 @@ class TestExportEndpoints:
         # Exportar directamente el código sin análisis previo
         export_payload = {
             "code": bubble_sort_payload["code"],
-            "algorithm_name": "Bubble Sort",
+            "algorithm_name": "Bubble Sort Test",
             "options": {
                 "format": "json",
+                "template": "minimal",
                 "include_visualizations": False,
-                "include_metadata": True
+                "include_metadata": True,
+                "sections": ["algorithm_info", "complexity"]
             }
         }
         
         response = client.post("/api/v1/export/export", json=export_payload)
         
-        # Si hay error en el endpoint, lo marcamos como skip
-        if response.status_code == 500:
-            pytest.skip("Endpoint de exportación tiene errores de implementación")
+        # Verificar el error real en lugar de skip
+        assert response.status_code == 200, \
+            f"Expected 200, got {response.status_code}. Error: {response.text}"
         
-        assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert "filename" in data or "content" in data
+        
+        # Verificar estructura del response
+        assert data["success"] is True, f"Export failed: {data}"
+        assert "filename" in data, "Missing filename in response"
+        assert "format" in data, "Missing format in response"
+        assert data["format"] == "json", f"Expected json format, got {data['format']}"
+        
+        # Para JSON, debería tener content
+        if "content" in data and data["content"]:
+            import json
+            # Verificar que el content es JSON válido
+            try:
+                content_obj = json.loads(data["content"])
+                assert isinstance(content_obj, dict), "JSON content should be a dict"
+            except json.JSONDecodeError as e:
+                pytest.fail(f"Invalid JSON content: {e}")
     
     def test_export_to_markdown(self, client, fibonacci_payload):
         """POST /api/v1/export debe exportar a Markdown"""
-        export_payload = {
+        payload = {
             "code": fibonacci_payload["code"],
-            "algorithm_name": "Fibonacci",
+            "algorithm_name": "Fibonacci Test",
             "options": {
                 "format": "markdown",
-                "include_visualizations": False
+                "template": "standard",
+                "include_visualizations": False,
+                "include_metadata": True,
+                "sections": ["algorithm_info", "complexity", "patterns"]
             }
         }
         
-        response = client.post("/api/v1/export/export", json=export_payload)
+        response = client.post("/api/v1/export/export", json=payload)
         
-        # Si falla con 400, el schema de entrada es incorrecto
-        if response.status_code in [400, 500]:
-            pytest.skip("Endpoint de exportación requiere corrección")
+        # No skip, verificar error
+        assert response.status_code == 200, \
+            f"Expected 200, got {response.status_code}. Error: {response.text}"
         
-        assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
+        
+        assert data["success"] is True, f"Export failed: {data}"
+        assert "filename" in data
+        assert data["format"] == "markdown"
+        
+        # Markdown debería tener content
+        if "content" in data and data["content"]:
+            assert isinstance(data["content"], str), "Markdown content should be string"
+            assert len(data["content"]) > 0, "Markdown content should not be empty"
+            # Verificar que tiene encabezados markdown
+            assert "#" in data["content"], "Markdown should have headers"
 
 # TESTS: Visualizations Endpoints
 class TestVisualizationsEndpoints:

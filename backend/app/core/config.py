@@ -151,11 +151,43 @@ class Settings(BaseSettings):
     def ALGORITHMS_PATH(self) -> Path:
         """Ruta de algoritmos guardados"""
         return self.STORAGE_PATH / "algorithms"
+
+    EXPORTS_BASE_DIR: str = Field(
+        default="data/exports",
+        description="Directorio base para archivos exportados"
+    )
     
     @property
     def EXPORTS_PATH(self) -> Path:
-        """Ruta de exportaciones"""
-        return self.STORAGE_PATH / "exports"
+        """
+        Retorna el Path al directorio base de exports.
+        Se crea automáticamente si no existe.
+        """
+        base_path = Path(self.EXPORTS_BASE_DIR)
+        if not base_path.is_absolute():
+            # Si es relativo, lo resolvemos desde la raíz del proyecto
+            base_path = Path(__file__).parent.parent.parent / base_path
+        
+        base_path.mkdir(parents=True, exist_ok=True)
+        return base_path
+    
+    def get_export_path(self, format: str) -> Path:
+        """
+        Retorna el Path al directorio específico según el formato.
+        
+        Args:
+            format: Formato de exportación (json, pdf, markdown, etc.)
+        
+        Returns:
+            Path al directorio del formato específico
+        
+        Example:
+            >>> settings.get_export_path("json")
+            Path("data/exports/json")
+        """
+        format_path = self.EXPORTS_PATH / format.lower()
+        format_path.mkdir(parents=True, exist_ok=True)
+        return format_path
     
     @property
     def TEMP_PATH(self) -> Path:
