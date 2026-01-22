@@ -164,17 +164,20 @@ async def detect_patterns(request: PatternDetectionRequest):
             ),
         )
         
-        # 8. IMPORTANTE: Retornar usando model_validate para manejar propiedades computadas
+        # 8. IMPORTANTE: Calcular high_confidence_count ANTES de crear el resultado
+        high_conf_count = len([p for p in patterns_found if p.confidence >= 0.7])
+
+        # 9. Retornar usando campos explícitos
         return PatternDetectionResult(
             patterns_found=patterns_found,
             scored_patterns=scored_patterns,
             primary_pattern=primary_pattern,
-            primary_pattern_name=result.primary_pattern_name,
             confident_patterns=confident_patterns,
             pattern_count=result.pattern_count,
-            high_confidence_count=result.high_confidence_count,
+            high_confidence_count=high_conf_count,  
             summary=result.summary,
             statistics=statistics,
+            metadata=getattr(result, 'metadata', {}),  
         )
 
     except Exception as e:

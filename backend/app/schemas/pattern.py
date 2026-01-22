@@ -173,7 +173,27 @@ class PatternDetectionResult(BaseModel):
     
     summary: str = Field(..., description="Resumen de patrones detectados")
     pattern_count: int = Field(0, ge=0, description="Total de patrones detectados")
-    
+
+    high_confidence_count: int = Field(
+        default=0, 
+        ge=0, 
+        description="Número de patrones con alta confianza"
+    )
+
+    from pydantic import model_validator
+
+    @model_validator(mode='after')  
+    def compute_high_confidence_count(self):
+        """Calcula automáticamente high_confidence_count si no se provee"""
+        if self.high_confidence_count == 0 and self.confident_patterns:
+            self.high_confidence_count = len(self.confident_patterns)
+        return self
+
+    statistics: Optional["PatternStatistics"] = Field(
+        None,
+        description="Estadísticas de detección"
+    )
+
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Metadata del análisis"
@@ -193,7 +213,7 @@ class PatternDetectionResult(BaseModel):
     def primary_confidence(self) -> float:
         """Confianza del patrón principal"""
         return self.primary_pattern.final_score if self.primary_pattern else 0.0
-    
+
     class Config:
         json_schema_extra = {
             "example": {
