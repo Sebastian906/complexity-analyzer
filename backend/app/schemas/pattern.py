@@ -7,7 +7,7 @@ Schemas Pydantic para representar patrones algorítmicos detectados.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import ConfidenceLevelEnum
 
@@ -36,7 +36,7 @@ class PatternIndicator(BaseModel):
     weight: float = Field(..., ge=0.0, le=1.0, description="Peso en el cálculo de confianza")
     evidence: Optional[str] = Field(None, description="Evidencia encontrada en el código")
     location: Optional[str] = Field(None, description="Ubicación en el AST")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -180,15 +180,6 @@ class PatternDetectionResult(BaseModel):
         description="Número de patrones con alta confianza"
     )
 
-    from pydantic import model_validator
-
-    @model_validator(mode='after')  
-    def compute_high_confidence_count(self):
-        """Calcula automáticamente high_confidence_count si no se provee"""
-        if self.high_confidence_count == 0 and self.confident_patterns:
-            self.high_confidence_count = len(self.confident_patterns)
-        return self
-
     statistics: Optional["PatternStatistics"] = Field(
         None,
         description="Estadísticas de detección"
@@ -198,6 +189,14 @@ class PatternDetectionResult(BaseModel):
         default_factory=dict,
         description="Metadata del análisis"
     )
+    
+    # model_validator FUERA de los campos, como método de clase
+    @model_validator(mode='after')
+    def compute_high_confidence_count(self):
+        """Calcula automáticamente high_confidence_count si no se provee"""
+        if self.high_confidence_count == 0 and self.confident_patterns:
+            self.high_confidence_count = len(self.confident_patterns)
+        return self
     
     @property
     def has_patterns(self) -> bool:
@@ -245,6 +244,7 @@ class PatternDetectionResult(BaseModel):
                 ],
                 "summary": "Patrón principal: Divide y Vencerás (confianza: 95%). También detectado: Recursión (88%).",
                 "pattern_count": 2,
+                "high_confidence_count": 1,
                 "metadata": {
                     "analysis_time_ms": 45.2,
                     "detectors_used": 12
@@ -255,32 +255,31 @@ class PatternDetectionResult(BaseModel):
 # Pattern Statistics
 class PatternStatistics(BaseModel):
     """Estadísticas de detección de patrones"""
-    total_patterns_analyzed: int = Field(..., ge=0, description="Total de patrones evaluados")
-    patterns_detected: int = Field(..., ge=0, description="Patrones detectados")
-    high_confidence_count: int = Field(..., ge=0, description="Patrones con alta confianza")
+    total_patterns_detected: int = Field(..., ge=0, description="Total de patrones detectados")
+    high_confidence_patterns: int = Field(..., ge=0, description="Patrones con alta confianza")
+    medium_confidence_patterns: int = Field(..., ge=0, description="Patrones con confianza media")
+    low_confidence_patterns: int = Field(..., ge=0, description="Patrones con confianza baja")
     
-    average_confidence: float = Field(..., ge=0.0, le=1.0, description="Confianza promedio")
-    max_confidence: float = Field(..., ge=0.0, le=1.0, description="Confianza máxima")
-    min_confidence: float = Field(..., ge=0.0, le=1.0, description="Confianza mínima")
-    
-    pattern_distribution: Dict[str, int] = Field(
-        default_factory=dict,
-        description="Distribución por tipo de patrón"
+    pattern_types_found: List[PatternType] = Field(
+        default_factory=list,
+        description="Tipos de patrones encontrados"
     )
+    most_confident_pattern: Optional[str] = Field(
+        None,
+        description="Patrón con mayor confianza"
+    )
+    average_confidence: float = Field(..., ge=0.0, le=1.0, description="Confianza promedio")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "total_patterns_analyzed": 12,
-                "patterns_detected": 2,
-                "high_confidence_count": 1,
-                "average_confidence": 0.65,
-                "max_confidence": 0.92,
-                "min_confidence": 0.38,
-                "pattern_distribution": {
-                    "divide_and_conquer": 1,
-                    "recursive": 1
-                }
+                "total_patterns_detected": 12,
+                "high_confidence_patterns": 2,
+                "medium_confidence_patterns": 5,
+                "low_confidence_patterns": 5,
+                "pattern_types_found": ["divide_and_conquer", "recursive"],
+                "most_confident_pattern": "Divide y Vencerás",
+                "average_confidence": 0.65
             }
         }
 

@@ -6,6 +6,7 @@ ideal para documentación, GitHub, y sitios estáticos.
 """
 
 import time
+import json
 from typing import List, Dict, Any
 
 from app.infrastructure.export.base_exporter import (
@@ -56,6 +57,30 @@ class MarkdownExporter(BaseExporter):
             # Generar contenido Markdown
             sections = []
             
+            # Normalizar visualizaciones y recurrencias (objetos -> dict/str)
+            try:
+                data.visualizations = self.extract_visualization_data(data.visualizations or {})
+            except Exception:
+                data.visualizations = data.visualizations or {}
+
+            # Asegurar que las recurrencias temporales/espaciales sean strings o dicts
+            try:
+                if getattr(data.analysis, "temporal_recurrence", None):
+                    tr = data.analysis.temporal_recurrence
+                    if hasattr(tr, "to_dict"):
+                        data.analysis.temporal_recurrence = tr.to_dict()
+                    elif not isinstance(tr, (str, dict)):
+                        data.analysis.temporal_recurrence = str(tr)
+                if getattr(data.analysis, "spatial_recurrence", None):
+                    sr = data.analysis.spatial_recurrence
+                    if hasattr(sr, "to_dict"):
+                        data.analysis.spatial_recurrence = sr.to_dict()
+                    elif not isinstance(sr, (str, dict)):
+                        data.analysis.spatial_recurrence = str(sr)
+            except Exception:
+                # No bloquear la exportación por problemas de serialización
+                pass
+
             sections.append(self._generate_header(data))
             sections.append(self._generate_metadata(data))
             
@@ -184,12 +209,29 @@ class MarkdownExporter(BaseExporter):
         
         # Ecuación de recurrencia temporal
         if data.analysis.temporal_recurrence:
+            temporal = data.analysis.temporal_recurrence
+
+            # Normalizar a texto: puede ser un string o un objeto TemporalComplexityResult
+            if isinstance(temporal, str):
+                recurrence_text = temporal
+            elif hasattr(temporal, "recurrence_equation") and getattr(temporal, "recurrence_equation"):
+                # Usar la ecuación si está disponible
+                recurrence_text = getattr(temporal.recurrence_equation, "equation", str(temporal))
+            elif hasattr(temporal, "to_dict"):
+                # Volcar a JSON legible
+                try:
+                    recurrence_text = json.dumps(temporal.to_dict(), ensure_ascii=False, indent=2)
+                except Exception:
+                    recurrence_text = str(temporal)
+            else:
+                recurrence_text = str(temporal)
+
             lines.extend([
                 "",
                 "#### Ecuación de Recurrencia",
                 "",
-                f"```",
-                data.analysis.temporal_recurrence,
+                "```",
+                recurrence_text,
                 "```",
             ])
         
@@ -203,12 +245,22 @@ class MarkdownExporter(BaseExporter):
             ])
             
             if data.analysis.spatial_recurrence:
+                # Normalizar la recurrencia espacial a texto legible
+                sr = data.analysis.spatial_recurrence
+                if isinstance(sr, dict):
+                    try:
+                        sr_text = json.dumps(sr, ensure_ascii=False, indent=2)
+                    except Exception:
+                        sr_text = str(sr)
+                else:
+                    sr_text = str(sr)
+
                 lines.extend([
                     "",
                     "#### Ecuación de Recurrencia Espacial",
                     "",
-                    f"```",
-                    data.analysis.spatial_recurrence,
+                    "```",
+                    sr_text,
                     "```",
                 ])
         
@@ -282,34 +334,46 @@ class MarkdownExporter(BaseExporter):
 
         line_data = data.analysis.line_by_line
 
-        # CORRECCIÓN: Verificar el tipo de line_by_line
+        # Manejar diferentes estructuras de datos
         if isinstance(line_data, dict):
-            # Ordenar por número de línea
-            sorted_items = sorted(line_data.items(), key=lambda x: int(x[0]) if isinstance(x[0], (int, str)) and str(x[0]).isdigit() else 0)
+            sorted_items = sorted(
+                line_data.items(), 
+                key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0
+            )
 
             for line_num, info in sorted_items:
-                # Verificar que info sea un dict
                 if not isinstance(info, dict):
                     continue
 
-                code = info.get("code", "").strip()[:50]  # Limitar longitud
+                code = str(info.get("code", "")).strip()[:50]
+
+                # IMPORTANTE: Convertir a string todo lo que pueda ser objeto
                 complexity = info.get("complexity", "O(1)")
+                if hasattr(complexity, '__dict__') or not isinstance(complexity, str):
+                    complexity = str(complexity) if complexity else "O(1)"
+
                 executions = info.get("executions", "1")
+                if hasattr(executions, '__dict__') or not isinstance(executions, (str, int, float)):
+                    executions = str(executions) if executions else "1"
 
-                # Escapar caracteres especiales en markdown
                 code = code.replace("|", "\\|")
-
                 lines.append(f"| {line_num} | `{code}` | `{complexity}` | {executions} |")
+
         elif isinstance(line_data, list):
-            # Si es una lista, iterar directamente
             for i, info in enumerate(line_data, 1):
                 if not isinstance(info, dict):
                     continue
 
                 line_num = info.get("line", i)
-                code = info.get("code", "").strip()[:50]
+                code = str(info.get("code", "")).strip()[:50]
+
                 complexity = info.get("complexity", "O(1)")
+                if hasattr(complexity, '__dict__') or not isinstance(complexity, str):
+                    complexity = str(complexity) if complexity else "O(1)"
+
                 executions = info.get("executions", "1")
+                if hasattr(executions, '__dict__') or not isinstance(executions, (str, int, float)):
+                    executions = str(executions) if executions else "1"
 
                 code = code.replace("|", "\\|")
                 lines.append(f"| {line_num} | `{code}` | `{complexity}` | {executions} |")
