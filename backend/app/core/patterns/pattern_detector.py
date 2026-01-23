@@ -60,6 +60,11 @@ class PatternDetectionResult:
         return len(self.all_patterns)
 
     @property
+    def high_confidence_count(self) -> int:
+        """Número de patrones con alta confianza (basado en confident_patterns)"""
+        return len(self.confident_patterns)
+
+    @property
     def primary_pattern_name(self) -> Optional[str]:
         """Nombre del patrón primario"""
         return self.primary_pattern.pattern.pattern_name if self.primary_pattern else None
