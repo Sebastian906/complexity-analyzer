@@ -143,6 +143,11 @@ class Settings(BaseSettings):
     EXPORT_EXCEL_ENABLED: bool = True
     EXPORT_HTML_ENABLED: bool = True
     
+    # Profiling
+    ENABLE_PROFILING: bool = True
+    PROFILE_MEMORY: bool = False  # True solo en debugging
+    PROFILE_EXECUTION_TIME: bool = True
+
     # Almacenamiento de Archivos
     STORAGE_PATH: Path = Field(default=Path("./data"))
     MAX_UPLOAD_SIZE_MB: int = 5
