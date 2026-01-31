@@ -7,6 +7,7 @@ Configura middlewares, routers, eventos de inicio/apagado y documentación.
 
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 import uvicorn
@@ -26,6 +27,13 @@ from app.core.exceptions import (
     LLMException,
     ParserException,
 )
+from app.profiling import (
+    enable_profiling,
+    disable_profiling,
+    generate_profiling_report,
+    print_profiling_summary,
+    get_performance_monitor,
+)
 from app.utils.logger import setup_logger
 
 # Configurar logger
@@ -44,6 +52,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info(f"Debug Mode: {settings.DEBUG}")
     
     try:
+        # Habilitar profiling solo en desarrollo y staging
+        if settings.APP_ENV in ["development", "staging"]:
+            logger.info("Habilitando profiling...")
+            enable_profiling(
+                enable_timing=True,
+                enable_memory=True,
+                enable_tracemalloc=(settings.APP_ENV == "development")
+            )
+            logger.info("Profiling habilitado")
+        else:
+            logger.info("Profiling deshabilitado en producción")
+
         # Inicializar conexiones a bases de datos
         logger.info("Conectando a bases de datos...")
         
@@ -90,6 +110,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Cerrando aplicación...")
     
     try:
+        # PROFILING SHUTDOWN
+        if settings.APP_ENV in ["development", "staging"]:
+            logger.info("Exportando reporte de profiling...")
+            
+            # Imprimir resumen en logs
+            print_profiling_summary()
+            
+            # Exportar reporte JSON
+            reports_path = Path("reports/profiling")
+            reports_path.mkdir(parents=True, exist_ok=True)
+            
+            report_file = reports_path / f"profiling_report_{settings.APP_ENV}.json"
+            generate_profiling_report(report_file)
+            logger.info(f"✓ Reporte guardado: {report_file}")
+            
+            # Deshabilitar profiling
+            disable_profiling()
+            logger.info("✓ Profiling deshabilitado")
+
         # Cerrar conexiones a bases de datos
         if settings.DATABASE_TYPE == "mongodb":
             try:
@@ -122,7 +161,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         logger.error(f"Error durante el cierre: {e}")
 
 # Crear aplicación FastAPI
-
 app = FastAPI(
     title=settings.APP_NAME,
     description=(
@@ -150,6 +188,34 @@ app.add_middleware(
 # Compresión GZip
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# Middleware de profiling
+@app.middleware("http")
+async def profiling_middleware(request: Request, call_next):
+    """
+    Middleware de profiling para todas las requests.
+    
+    Mide tiempo de procesamiento y uso de memoria por endpoint.
+    """
+    # Solo perfilar si está habilitado
+    if settings.APP_ENV not in ["development", "staging"]:
+        return await call_next(request)
+    
+    monitor = get_performance_monitor()
+    
+    # Construir nombre de operación desde el path
+    operation_name = f"{request.method}:{request.url.path}"
+    
+    # Monitorear la request
+    with monitor.monitor(operation_name, module="api") as metrics:
+        response = await call_next(request)
+        
+        # Agregar headers de profiling a la respuesta
+        if metrics:
+            response.headers["X-Process-Time"] = f"{metrics.duration_seconds:.4f}"
+            response.headers["X-Memory-Used-MB"] = f"{metrics.memory_used_mb:.2f}"
+            response.headers["X-Performance-Level"] = metrics.performance_level.value
+    
+    return response
 
 # Middleware de timing de requests
 @app.middleware("http")
@@ -161,7 +227,6 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = f"{process_time:.4f}"
     return response
 
-
 # Middleware de logging de requests
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -172,7 +237,6 @@ async def log_requests(request: Request, call_next):
     return response
 
 # Exception Handlers
-
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Handler para excepciones HTTP estándar"""
@@ -289,7 +353,6 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(api_router, prefix=f"/api/v1")
 
 # Root Endpoint
-
 @app.get("/", tags=["Root"])
 async def root():
     """
@@ -309,7 +372,6 @@ async def root():
     }
 
 # Ejecutar aplicación
-
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",

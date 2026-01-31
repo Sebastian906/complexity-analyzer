@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.exceptions import ExportFormatException
 from app.utils.logger import setup_logger
 
+from app.profiling import get_performance_monitor
+
 logger = setup_logger(__name__)
 
 # Enums
@@ -74,12 +76,32 @@ class ExportService:
     def __init__(self, export_path: Optional[Path] = None):
         self.export_path = export_path or settings.EXPORTS_PATH
         self.export_path.mkdir(parents=True, exist_ok=True)
+
+        # PROFILING INIT
+        self.profiling_enabled = settings.APP_ENV in ["development", "staging"]
+        if self.profiling_enabled:
+            self.monitor = get_performance_monitor()
+        else:
+            self.monitor = None
+        
         logger.info(f"ExportService inicializado - Path: {self.export_path}")
 
     async def export(self, request: ExportRequest) -> ExportResult:
         """Exporta datos en formato especificado"""
         logger.info(f"Exportando en formato: {request.format}")
 
+        # PROFILING: Exportación
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor(
+                f"export_{request.format.value}",
+                module="export_service"
+            ):
+                return await self._export_impl(request)
+        else:
+            return await self._export_impl(request)
+    
+    async def _export_impl(self, request: ExportRequest) -> ExportResult:
+        """Implementación interna de export."""
         try:
             # Seleccionar exportador
             if request.format == ExportFormat.JSON:

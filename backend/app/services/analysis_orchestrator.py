@@ -25,6 +25,7 @@ from app.core.exceptions import (
     AnalyzerException,
     TimeoutException,
 )
+from app.core.config import settings
 from app.schemas import (
     # Request Schemas
     CompleteAnalysisRequest,
@@ -61,6 +62,10 @@ from app.schemas import (
 )
 from app.utils.logger import setup_logger
 
+# ========== PROFILING IMPORT ==========
+from app.profiling import get_performance_monitor
+# ======================================
+
 logger = setup_logger(__name__)
 
 class AnalysisOrchestrator:
@@ -93,6 +98,16 @@ class AnalysisOrchestrator:
         self.pattern_detector = pattern_detector or PatternDetector()
         self.structure_identifier = structure_identifier or StructureIdentifier()
 
+        # ========== PROFILING INIT ==========
+        # Obtener monitor de performance
+        self.profiling_enabled = settings.APP_ENV in ["development", "staging"]
+        if self.profiling_enabled:
+            self.monitor = get_performance_monitor()
+            logger.info("AnalysisOrchestrator con profiling habilitado")
+        else:
+            self.monitor = None
+        # ====================================
+
         logger.info("AnalysisOrchestrator inicializado")
 
     async def analyze_complete(
@@ -110,6 +125,30 @@ class AnalysisOrchestrator:
         """
         logger.info("Iniciando análisis completo")
 
+        # ========== PROFILING: Monitorear análisis completo ==========
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("analyze_complete", module="orchestrator") as metrics:
+                result = await self._execute_analysis(request)
+                
+                # Log métricas si la operación fue lenta
+                if metrics and metrics.duration_seconds > 2.0:
+                    logger.warning(
+                        f"Análisis completo lento: {metrics.duration_seconds:.2f}s, "
+                        f"memoria: {metrics.memory_used_mb:.2f}MB"
+                    )
+                
+                return result
+        else:
+            return await self._execute_analysis(request)
+        # =============================================================
+
+    async def _execute_analysis(
+        self,
+        request: CompleteAnalysisRequest
+    ) -> CompleteAnalysisResult:
+        """
+        Ejecuta el análisis completo (lógica separada para profiling).
+        """
         started_at = datetime.utcnow()
         start_time = time.time()
 
@@ -131,87 +170,82 @@ class AnalysisOrchestrator:
         try:
             # PASO 1: PARSING
             logger.info("Paso 1: Parsing")
-            try:
-                ast = self.parser.parse(request.code, validate=True)
-                algorithm_info = self._extract_algorithm_info(ast, request.code)
-            except ParserException as e:
-                logger.error(f"Error en parsing: {e}")
-                errors.append(f"Error de parsing: {e}")
-
-                # CREAR PLACEHOLDER EN LUGAR DE RETORNAR
-                algorithm_info = AlgorithmInfo(
-                    name="unknown",
-                    parameters=[],
-                    has_recursion=False,
-                    has_loops=False,
-                    max_nesting_depth=0,
-                    total_lines=len(request.code.splitlines()),
-                    total_statements=0
-                )
+            
+            # ========== PROFILING: Parsing ==========
+            if self.profiling_enabled and self.monitor:
+                with self.monitor.monitor("parse_code", module="parser"):
+                    ast, algorithm_info = await self._parse_code(request, errors)
+            else:
+                ast, algorithm_info = await self._parse_code(request, errors)
+            # ========================================
 
             # PASO 2: ANÁLISIS DE COMPLEJIDAD
             if request.analyze_complexity and ast:
                 logger.info("Paso 2: Análisis de complejidad")
-                try:
-                    analysis_result = self.analyzer_engine.analyze(
-                        ast,
-                        analyze_line_by_line=request.complexity_options.analyze_line_by_line,
-                        analyze_space=request.complexity_options.analyze_spatial,
-                        analyze_recurrence=request.complexity_options.analyze_recurrence,
-                        analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
+                
+                # ========== PROFILING: Análisis ==========
+                if self.profiling_enabled and self.monitor:
+                    with self.monitor.monitor("complexity_analysis", module="analyzer"):
+                        complexity_result = await self._analyze_complexity(
+                            ast, request, errors, warnings
+                        )
+                else:
+                    complexity_result = await self._analyze_complexity(
+                        ast, request, errors, warnings
                     )
-
-                    # AGREGAR VALIDACIÓN
-                    if analysis_result is None:
-                        logger.error("AnalyzerEngine retornó None")
-                        errors.append("Analyzer retornó resultado nulo")
-                    else:
-                        # Convertir a schemas...
-                        complexity_result = self._build_complexity_analysis(analysis_result)
-                        # ...resto del código
-
-                except AnalyzerException as e:
-                    # CAMBIO CRÍTICO: Agregar a errors en vez de solo warnings
-                    logger.error(f"Error en análisis de complejidad: {e}")
-                    errors.append(f"Error en análisis de complejidad: {e}")
-                    # También mantener warning para info adicional
-                    warnings.append(f"Análisis de complejidad parcial: {e}")
-
-                except Exception as e:
-                    # NUEVO: Capturar cualquier otro error
-                    logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
-                    errors.append(f"Error en análisis: {e}")
+                # =========================================
 
             # PASO 3: DETECCIÓN DE PATRONES
             if request.analyze_patterns and ast:
                 logger.info("Paso 3: Detección de patrones")
-                try:
-                    patterns_result = self._detect_patterns(ast, request)
-                except Exception as e:
-                    logger.warning(f"Error en detección de patrones: {e}")
-                    warnings.append(f"Detección de patrones fallida: {e}")
+                
+                # ========== PROFILING: Patrones ==========
+                if self.profiling_enabled and self.monitor:
+                    with self.monitor.monitor("pattern_detection", module="patterns"):
+                        patterns_result = await self._detect_patterns_safe(
+                            ast, request, warnings
+                        )
+                else:
+                    patterns_result = await self._detect_patterns_safe(
+                        ast, request, warnings
+                    )
+                # =========================================
 
             # PASO 4: DETECCIÓN DE ESTRUCTURAS
             if request.analyze_structures and ast:
                 logger.info("Paso 4: Detección de estructuras")
-                try:
-                    structures_result = self._detect_structures(ast, request)
-                except Exception as e:
-                    logger.warning(f"Error en detección de estructuras: {e}")
-                    warnings.append(f"Detección de estructuras fallida: {e}")
+                
+                # ========== PROFILING: Estructuras ==========
+                if self.profiling_enabled and self.monitor:
+                    with self.monitor.monitor("structure_detection", module="structures"):
+                        structures_result = await self._detect_structures_safe(
+                            ast, request, warnings
+                        )
+                else:
+                    structures_result = await self._detect_structures_safe(
+                        ast, request, warnings
+                    )
+                # ===========================================
 
             # PASO 5: GENERACIÓN DE VISUALIZACIONES
             if request.generate_visualizations and ast:
                 logger.info("Paso 5: Generación de visualizaciones")
-                try:
+                
+                # ========== PROFILING: Visualizaciones ==========
+                if self.profiling_enabled and self.monitor:
+                    with self.monitor.monitor("generate_visualizations", module="visualization"):
+                        visualizations = await self._generate_visualizations(
+                            ast,
+                            request,
+                            complexity_result
+                        )
+                else:
                     visualizations = await self._generate_visualizations(
                         ast,
                         request,
                         complexity_result
                     )
-                except Exception as e:
-                    logger.warning(f"Error en visualizaciones: {e}")
-                    warnings.append(f"Visualizaciones parciales: {e}")
+                # ===============================================
 
             # CONSTRUIR RESULTADO FINAL
             return self._create_result(
@@ -256,6 +290,100 @@ class AnalysisOrchestrator:
             )
 
     # Helper Methods - Extracción de Información
+    async def _parse_code(
+        self,
+        request: CompleteAnalysisRequest,
+        errors: list
+    ) -> tuple[Optional[ProgramNode], Optional[AlgorithmInfo]]:
+        """Parsea el código y extrae información."""
+        try:
+            ast = self.parser.parse(request.code, validate=True)
+            algorithm_info = self._extract_algorithm_info(ast, request.code)
+            return ast, algorithm_info
+        except ParserException as e:
+            logger.error(f"Error en parsing: {e}")
+            errors.append(f"Error de parsing: {e}")
+
+            # CREAR PLACEHOLDER EN LUGAR DE RETORNAR
+            algorithm_info = AlgorithmInfo(
+                name="unknown",
+                parameters=[],
+                has_recursion=False,
+                has_loops=False,
+                max_nesting_depth=0,
+                total_lines=len(request.code.splitlines()),
+                total_statements=0
+            )
+            return None, algorithm_info
+
+    async def _analyze_complexity(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest,
+        errors: list,
+        warnings: list
+    ) -> Optional[ComplexityAnalysis]:
+        """Analiza complejidad del algoritmo."""
+        try:
+            analysis_result = self.analyzer_engine.analyze(
+                ast,
+                analyze_line_by_line=request.complexity_options.analyze_line_by_line,
+                analyze_space=request.complexity_options.analyze_spatial,
+                analyze_recurrence=request.complexity_options.analyze_recurrence,
+                analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
+            )
+
+            # AGREGAR VALIDACIÓN
+            if analysis_result is None:
+                logger.error("AnalyzerEngine retornó None")
+                errors.append("Analyzer retornó resultado nulo")
+                return None
+            else:
+                # Convertir a schemas
+                return self._build_complexity_analysis(analysis_result)
+
+        except AnalyzerException as e:
+            # CAMBIO CRÍTICO: Agregar a errors en vez de solo warnings
+            logger.error(f"Error en análisis de complejidad: {e}")
+            errors.append(f"Error en análisis de complejidad: {e}")
+            # También mantener warning para info adicional
+            warnings.append(f"Análisis de complejidad parcial: {e}")
+            return None
+
+        except Exception as e:
+            # NUEVO: Capturar cualquier otro error
+            logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
+            errors.append(f"Error en análisis: {e}")
+            return None
+
+    async def _detect_patterns_safe(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest,
+        warnings: list
+    ) -> Optional[PatternDetectionResult]:
+        """Detecta patrones con manejo de errores."""
+        try:
+            return self._detect_patterns(ast, request)
+        except Exception as e:
+            logger.warning(f"Error en detección de patrones: {e}")
+            warnings.append(f"Detección de patrones fallida: {e}")
+            return None
+
+    async def _detect_structures_safe(
+        self,
+        ast: ProgramNode,
+        request: CompleteAnalysisRequest,
+        warnings: list
+    ) -> Optional[StructureDetectionResult]:
+        """Detecta estructuras con manejo de errores."""
+        try:
+            return self._detect_structures(ast, request)
+        except Exception as e:
+            logger.warning(f"Error en detección de estructuras: {e}")
+            warnings.append(f"Detección de estructuras fallida: {e}")
+            return None
+
     def _extract_algorithm_info(self, ast: ProgramNode, code: str) -> AlgorithmInfo:
         """Extrae información del algoritmo desde el AST."""
         parameters = []

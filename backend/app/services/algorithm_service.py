@@ -35,6 +35,8 @@ from app.schemas import (
 )
 from app.utils.logger import setup_logger
 
+from app.profiling import get_performance_monitor
+
 logger = setup_logger(__name__)
 
 class AlgorithmService:
@@ -74,6 +76,13 @@ class AlgorithmService:
         # Índice en memoria (migrar a MongoDB en producción)
         self._algorithms: dict[str, Algorithm] = {}
 
+        # PROFILING INIT 
+        self.profiling_enabled = settings.APP_ENV in ["development", "staging"]
+        if self.profiling_enabled:
+            self.monitor = get_performance_monitor()
+        else:
+            self.monitor = None
+        
         logger.info(f"AlgorithmService inicializado - Storage: {self.storage_path}")
 
     # CRUD Operations
@@ -93,6 +102,15 @@ class AlgorithmService:
         """
         logger.info(f"Creando algoritmo: {request.name}")
 
+        # PROFILING: Creación de algoritmo
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("algorithm_create", module="algorithm_service"):
+                return await self._create_impl(request)
+        else:
+            return await self._create_impl(request)
+
+    async def _create_impl(self, request: AlgorithmCreate) -> AlgorithmResponse:
+        """Implementación interna de create."""
         # Validar tamaño del código
         self._validate_code_size(request.code)
 
@@ -152,6 +170,15 @@ class AlgorithmService:
         Returns:
             AlgorithmResponse o None si no existe
         """
+        # PROFILING: Lectura de algoritmo
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("algorithm_get", module="algorithm_service"):
+                return await self._get_impl(algorithm_id)
+        else:
+            return await self._get_impl(algorithm_id)
+        
+    async def _get_impl(self, algorithm_id: str) -> Optional[AlgorithmResponse]:
+        """Implementación interna de get."""
         algorithm = self._algorithms.get(algorithm_id)
         
         if not algorithm:
@@ -179,6 +206,19 @@ class AlgorithmService:
         Returns:
             AlgorithmResponse o None si no existe
         """
+        # PROFILING: Actualización de algoritmo
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("algorithm_update", module="algorithm_service"):
+                return await self._update_impl(algorithm_id, request)
+        else:
+            return await self._update_impl(algorithm_id, request)
+
+    async def _update_impl(
+        self,
+        algorithm_id: str,
+        request: AlgorithmUpdate
+    ) -> Optional[AlgorithmResponse]:
+        """Implementación interna de update."""
         existing = self._algorithms.get(algorithm_id)
         if not existing:
             logger.warning(f"Algoritmo no encontrado para actualizar: {algorithm_id}")
@@ -250,6 +290,15 @@ class AlgorithmService:
         Returns:
             bool: True si se eliminó, False si no existía
         """
+        # ========== PROFILING: Eliminación de algoritmo ==========
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("algorithm_delete", module="algorithm_service"):
+                return await self._delete_impl(algorithm_id)
+        else:
+            return await self._delete_impl(algorithm_id)
+
+    async def _delete_impl(self, algorithm_id: str) -> bool:
+        """Implementación interna de delete."""
         if algorithm_id not in self._algorithms:
             logger.warning(f"Algoritmo no encontrado para eliminar: {algorithm_id}")
             return False
@@ -280,6 +329,18 @@ class AlgorithmService:
         Returns:
             AlgorithmListResponse: Lista paginada de resultados
         """
+        # PROFILING: Búsqueda de algoritmos
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("algorithm_search", module="algorithm_service"):
+                return await self._search_impl(request)
+        else:
+            return await self._search_impl(request)
+        
+    async def _search_impl(
+        self,
+        request: AlgorithmSearchCriteria
+    ) -> AlgorithmListResponse:
+        """Implementación interna de search."""
         logger.info(f"Buscando algoritmos con criterios: {request}")
     
         # Construir filtro

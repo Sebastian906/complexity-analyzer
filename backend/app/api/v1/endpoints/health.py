@@ -6,6 +6,7 @@ Endpoints para verificar el estado del sistema.
 
 from fastapi import APIRouter, status
 from datetime import datetime
+from pathlib import Path
 
 from app import __version__
 from app.core.config import settings
@@ -41,6 +42,7 @@ async def health_check():
             "visualization": True,
             "llm_claude": bool(settings.ANTHROPIC_API_KEY),
             "llm_gemini": bool(settings.GOOGLE_API_KEY),
+            "profiling": settings.APP_ENV in ["development", "staging"],
         }
     }
 
@@ -87,3 +89,186 @@ async def detailed_status():
             "gemini": "configured" if settings.GOOGLE_API_KEY else "not_configured",
         }
     }
+
+# Endpoints de Profiling
+@router.get(
+    "/profiling",
+    summary="Profiling Statistics",
+    description="Obtiene estadísticas de profiling del sistema"
+)
+async def profiling_stats():
+    """
+    Retorna estadísticas de profiling.
+    
+    Solo disponible en desarrollo y staging.
+    """
+    if settings.APP_ENV not in ["development", "staging"]:
+        return {
+            "success": False,
+            "message": "Profiling solo disponible en desarrollo/staging",
+            "enabled": False
+        }
+
+    try:
+        from app.profiling import get_performance_monitor
+        
+        monitor = get_performance_monitor()
+        
+        # Obtener todas las métricas
+        all_metrics = monitor.get_metrics()
+        
+        # Obtener operaciones lentas
+        slow_ops = monitor.get_slow_operations(threshold_seconds=1.0)
+        
+        # Obtener operaciones con alto uso de memoria
+        memory_intensive = monitor.get_memory_intensive_operations(threshold_mb=50.0)
+        
+        # Obtener rendimiento por módulo
+        module_performance = monitor.get_module_performance()
+        
+        # Construir estadísticas resumidas
+        stats = {
+            "total_operations": len(all_metrics),
+            "modules_monitored": list(module_performance.keys()),
+            "slow_operations_count": len(slow_ops),
+            "memory_intensive_count": len(memory_intensive),
+        }
+        
+        # Top 10 operaciones más lentas
+        top_slow = sorted(
+            all_metrics.items(),
+            key=lambda x: x[1].duration_seconds,
+            reverse=True
+        )[:10]
+        
+        # Top 10 operaciones con más memoria
+        top_memory = sorted(
+            all_metrics.items(),
+            key=lambda x: x[1].memory_used_mb,
+            reverse=True
+        )[:10]
+        
+        return {
+            "success": True,
+            "enabled": True,
+            "timestamp": datetime.now().isoformat(),
+            "environment": settings.APP_ENV,
+            "statistics": stats,
+            "module_performance": {
+                module: {
+                    "total_operations": perf.total_operations,
+                    "total_time_seconds": perf.total_time_seconds,
+                    "average_time_seconds": perf.average_time_seconds,
+                    "total_memory_mb": perf.total_memory_mb,
+                    "average_memory_mb": perf.average_memory_mb,
+                    "slowest_operation": perf.slowest_operation,
+                    "most_memory_intensive": perf.most_memory_intensive,
+                }
+                for module, perf in module_performance.items()
+            },
+            "top_slow_operations": [
+                {
+                    "name": name,
+                    "duration_seconds": metrics.duration_seconds,
+                    "duration_ms": metrics.duration_ms,
+                    "module": metrics.module,
+                    "performance_level": metrics.performance_level.value,
+                }
+                for name, metrics in top_slow
+            ],
+            "top_memory_operations": [
+                {
+                    "name": name,
+                    "memory_used_mb": metrics.memory_used_mb,
+                    "memory_peak_mb": metrics.memory_peak_mb,
+                    "module": metrics.module,
+                    "performance_level": metrics.performance_level.value,
+                }
+                for name, metrics in top_memory
+            ],
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error obteniendo stats: {str(e)}",
+            "enabled": True,
+        }
+
+@router.post(
+    "/profiling/export",
+    summary="Export Profiling Report",
+    description="Exporta reporte completo de profiling a JSON"
+)
+async def export_profiling_report():
+    """
+    Exporta reporte de profiling a archivo JSON.
+    
+    Solo disponible en desarrollo y staging.
+    """
+    if settings.APP_ENV not in ["development", "staging"]:
+        return {
+            "success": False,
+            "message": "Profiling solo disponible en desarrollo/staging",
+        }
+    
+    try:
+        from app.profiling import generate_profiling_report
+        
+        # Crear directorio de reportes
+        reports_path = Path("reports/profiling")
+        reports_path.mkdir(parents=True, exist_ok=True)
+        
+        # Generar nombre con timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_file = reports_path / f"profiling_export_{timestamp}.json"
+        
+        # Exportar
+        generate_profiling_report(report_file)
+        
+        return {
+            "success": True,
+            "message": "Reporte exportado exitosamente",
+            "file_path": str(report_file),
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error exportando reporte: {str(e)}",
+        }
+
+@router.post(
+    "/profiling/reset",
+    summary="Reset Profiling Stats",
+    description="Reinicia todas las estadísticas de profiling"
+)
+async def reset_profiling_stats():
+    """
+    Reinicia estadísticas de profiling.
+    
+    Solo disponible en desarrollo y staging.
+    """
+    if settings.APP_ENV not in ["development", "staging"]:
+        return {
+            "success": False,
+            "message": "Profiling solo disponible en desarrollo/staging",
+        }
+    
+    try:
+        from app.profiling import reset_profiling
+        
+        reset_profiling()
+        
+        return {
+            "success": True,
+            "message": "Estadísticas de profiling reiniciadas",
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error reiniciando stats: {str(e)}",
+        }
