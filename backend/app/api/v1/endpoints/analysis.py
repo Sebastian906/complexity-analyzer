@@ -35,11 +35,21 @@ from app.schemas import (
 
 from app.core.parser import PseudocodeParser
 from app.core.analyzer.analyzer_engine import AnalyzerEngine
+from app.core.config import settings
 from app.utils.logger import setup_logger
+
+from app.profiling import get_performance_monitor
 
 logger = setup_logger(__name__)
 
 router = APIRouter()
+
+# Obtener monitor global
+_profiling_enabled = settings.APP_ENV in ["development", "staging"]
+if _profiling_enabled:
+    _monitor = get_performance_monitor()
+else:
+    _monitor = None
 
 @router.post(
     "/analyze-complete",
@@ -59,24 +69,51 @@ async def analyze_complexity_complete(request: ComplexityAnalysisRequest):
     - Cotas ajustadas (Theta)
     - Análisis línea por línea
     """
+    # PROFILING: Endpoint completo
+    if _profiling_enabled and _monitor:
+        with _monitor.monitor("endpoint_analyze_complete", module="api"):
+            return await _analyze_complexity_complete_impl(request)
+    else:
+        return await _analyze_complexity_complete_impl(request)
+
+async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
+    """Implementación interna del endpoint."""
     try:
         logger.info("Recibida solicitud de análisis completo")
 
         # 1. Parsear el código
-        parser = PseudocodeParser()
-        ast = parser.parse(request.code)
-
+        # PROFILING: Parsing
+        if _profiling_enabled and _monitor:
+            with _monitor.monitor("parse_algorithm", module="parser"):
+                parser = PseudocodeParser()
+                ast = parser.parse(request.code)
+        else:
+            parser = PseudocodeParser()
+            ast = parser.parse(request.code)
+        
         logger.info(f"Código parseado: {ast.algorithm.name}")
 
         # 2. Analizar con el motor principal
-        engine = AnalyzerEngine()
-        result = engine.analyze(
-            ast,
-            analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
-            analyze_space=request.options.analyze_spatial if request.options else True,
-            analyze_recurrence=request.options.analyze_recurrence if request.options else True,
-            analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
-        )
+        # PROFILING: Análisis 
+        if _profiling_enabled and _monitor:
+            with _monitor.monitor("analyze_algorithm", module="analyzer"):
+                engine = AnalyzerEngine()
+                result = engine.analyze(
+                    ast,
+                    analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
+                    analyze_space=request.options.analyze_spatial if request.options else True,
+                    analyze_recurrence=request.options.analyze_recurrence if request.options else True,
+                    analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
+                )
+        else:
+            engine = AnalyzerEngine()
+            result = engine.analyze(
+                ast,
+                analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
+                analyze_space=request.options.analyze_spatial if request.options else True,
+                analyze_recurrence=request.options.analyze_recurrence if request.options else True,
+                analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
+            )
 
         # 3. Construir AlgorithmInfo
         algorithm_info = AlgorithmInfo(
@@ -233,6 +270,15 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
 )
 async def analyze_quick(code: str = Query(..., description="Código a analizar")):
     """Análisis rápido de complejidad"""
+    # PROFILING: Quick analysis
+    if _profiling_enabled and _monitor:
+        with _monitor.monitor("endpoint_quick_analysis", module="api"):
+            return await _analyze_quick_impl(code)
+    else:
+        return await _analyze_quick_impl(code)
+    
+async def _analyze_quick_impl(code: str):
+    """Implementación interna de quick analysis."""
     try:
         logger.info("Recibida solicitud de análisis rápido")
         
@@ -263,6 +309,15 @@ async def analyze_quick(code: str = Query(..., description="Código a analizar")
 )
 async def analyze_line_by_line(code: str = Query(..., description="Código a analizar")):
     """Análisis línea por línea"""
+    # PROFILING: Line by line
+    if _profiling_enabled and _monitor:
+        with _monitor.monitor("endpoint_line_by_line", module="api"):
+            return await _analyze_line_by_line_impl(code)
+    else:
+        return await _analyze_line_by_line_impl(code)
+
+async def _analyze_line_by_line_impl(code: str):
+    """Implementación interna de line by line."""
     try:
         logger.info("Recibida solicitud de análisis línea por línea")
         
@@ -318,6 +373,15 @@ async def solve_recurrence_equation(
     - substitution
     - characteristic
     """
+    # PROFILING: Solve recurrence
+    if _profiling_enabled and _monitor:
+        with _monitor.monitor("solve_recurrence", module="api"):
+            return await _solve_recurrence_impl(equation, base_case, method)
+    else:
+        return await _solve_recurrence_impl(equation, base_case, method)
+
+async def _solve_recurrence_impl(equation: str, base_case: Optional[str], method: Optional[str]):
+    """Implementación interna de solve recurrence."""
     try:
         from app.core.analyzer.recurrence import solve_recurrence, SolutionMethod
         

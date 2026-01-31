@@ -11,7 +11,10 @@ from typing import Dict, List, Optional, Any
 
 from app.core.parser import PseudocodeParser, ASTValidator, SemanticAnalyzer
 from app.core.exceptions import ValidationException
+from app.core.config import settings
 from app.utils.logger import setup_logger
+
+from app.profiling import get_performance_monitor
 
 logger = setup_logger(__name__)
 
@@ -45,7 +48,6 @@ class ValidationRequest:
     """Request de validación"""
     code: str
     level: ValidationLevel = ValidationLevel.COMPLETE
-    # check_best_practices: bool = False  # LÍNEA PROBLEMÁTICA
 
     # Límites personalizados (opcional)
     max_lines: Optional[int] = None
@@ -117,6 +119,13 @@ class ValidationService:
         self.validator = validator or ASTValidator()
         self.semantic_analyzer = semantic_analyzer or SemanticAnalyzer()
 
+        # PROFILING INIT
+        self.profiling_enabled = settings.APP_ENV in ["development", "staging"]
+        if self.profiling_enabled:
+            self.monitor = get_performance_monitor()
+        else:
+            self.monitor = None
+
         logger.info("ValidationService inicializado")
 
     async def validate(
@@ -134,6 +143,21 @@ class ValidationService:
         """
         logger.info(f"Validando código - Nivel: {request.level}")
 
+        # PROFILING: Validación completa
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor(
+                f"validation_{request.level.value}",
+                module="validation_service"
+            ):
+                return await self._validate_impl(request)
+        else:
+            return await self._validate_impl(request)
+        
+    async def _validate_impl(
+        self,
+        request: ValidationRequest
+    ) -> ValidationResult:
+        """Implementación interna de validate."""
         result = ValidationResult(
             is_valid=True,
             level=request.level,
@@ -161,7 +185,6 @@ class ValidationService:
             await self._validate_structural(request, result)
 
         # Nivel 4: Best Practices (solo si es COMPLETE)
-        # Usar level en lugar de check_best_practices
         if request.level == ValidationLevel.COMPLETE:
             await self._validate_best_practices(request, result)
 
@@ -178,6 +201,19 @@ class ValidationService:
         result: ValidationResult
     ) -> None:
         """Valida sintaxis del código"""
+        # PROFILING: Validación sintaxis
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("validate_syntax", module="validation_service"):
+                await self._validate_syntax_impl(request, result)
+        else:
+            await self._validate_syntax_impl(request, result)
+        
+    async def _validate_syntax_impl(
+        self,
+        request: ValidationRequest,
+        result: ValidationResult
+    ) -> None:
+        """Implementación interna de validación de sintaxis."""
         try:
             self.parser.parse(request.code, validate=False)
             result.metadata["syntax_valid"] = True
@@ -199,6 +235,19 @@ class ValidationService:
         result: ValidationResult
     ) -> None:
         """Valida semántica del código"""
+        # PROFILING: Validación semántica
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("validate_semantic", module="validation_service"):
+                await self._validate_semantic_impl(request, result)
+        else:
+            await self._validate_semantic_impl(request, result)
+        
+    async def _validate_semantic_impl(
+        self,
+        request: ValidationRequest,
+        result: ValidationResult
+    ) -> None:
+        """Implementación interna de validación semántica."""
         try:
             ast = self.parser.parse(request.code, validate=True)
 
@@ -245,6 +294,19 @@ class ValidationService:
         result: ValidationResult
     ) -> None:
         """Valida restricciones estructurales"""
+        # PROFILING: Validación estructural
+        if self.profiling_enabled and self.monitor:
+            with self.monitor.monitor("validate_structural", module="validation_service"):
+                await self._validate_structural_impl(request, result)
+        else:
+            await self._validate_structural_impl(request, result)
+        
+    async def _validate_structural_impl(
+        self,
+        request: ValidationRequest,
+        result: ValidationResult
+    ) -> None:
+        """Implementación interna de validación estructural."""
         try:
             ast = self.parser.parse(request.code, validate=True)
 
