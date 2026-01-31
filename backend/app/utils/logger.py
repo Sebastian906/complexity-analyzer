@@ -11,7 +11,8 @@ from typing import Optional
 
 from loguru import logger
 
-from app.core.config import settings
+# Avoid importing settings at module import time to prevent circular imports.
+# Import settings lazily inside `setup_logger`.
 
 
 def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
@@ -30,15 +31,35 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
         >>> logger.info("Mensaje de log")
     """
     
+    # Import settings lazily to avoid circular imports. If importing settings
+    # raises an exception (partial initialization / circular import), fall
+    # back to safe defaults so logging still works during startup.
+    try:
+        from app.core.config import settings  # local import
+        _settings = settings
+    except Exception:
+        class _Fallback:
+            is_development = True
+            is_production = False
+            ENABLE_PROFILING = False
+            LOG_FORMAT = "{time} | {level} | {name}:{function}:{line} - {message}"
+            LOG_LEVEL = "DEBUG"
+            LOG_FILE_PATH = Path("./logs/app.log")
+            LOG_ROTATION = "00:00"
+            LOG_RETENTION = "30 days"
+            LOG_COMPRESSION = "zip"
+
+        _settings = _Fallback()
+
     # Remover handlers por defecto
     logger.remove()
 
     # En modo desarrollo, solo log a consola para evitar conflictos de acceso concurrente a archivos
-    if settings.is_development:
+    if _settings.is_development:
         logger.add(
             sys.stdout,
-            format=settings.LOG_FORMAT,
-            level=settings.LOG_LEVEL,
+            format=_settings.LOG_FORMAT,
+            level=_settings.LOG_LEVEL,
             colorize=True,
             backtrace=True,
             diagnose=True,
@@ -56,7 +77,7 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
         )
         # Handler 2: Archivo de Log General
         logger.add(
-            settings.LOG_FILE_PATH,
+            _settings.LOG_FILE_PATH,
             format=(
                 "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
                 "{level: <8} | "
@@ -64,9 +85,9 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
                 "{message}"
             ),
             level="DEBUG",
-            rotation=settings.LOG_ROTATION,
-            retention=settings.LOG_RETENTION,
-            compression=settings.LOG_COMPRESSION,
+            rotation=_settings.LOG_ROTATION,
+            retention=_settings.LOG_RETENTION,
+            compression=_settings.LOG_COMPRESSION,
             backtrace=True,
             diagnose=True,
             enqueue=True,  # Thread-safe
@@ -91,7 +112,7 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
             enqueue=True,
         )
         # Handler 4: Archivo de Performance (si está habilitado)
-        if settings.ENABLE_PROFILING:
+        if getattr(_settings, "ENABLE_PROFILING", False):
             performance_log_path = settings.LOG_FILE_PATH.parent / "performance.log"
             logger.add(
                 performance_log_path,
@@ -104,8 +125,8 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
                 enqueue=True,
             )
         # Handler 5: JSON Log para parseo externo (producción)
-        if settings.is_production:
-            json_log_path = settings.LOG_FILE_PATH.parent / "app.json.log"
+        if getattr(_settings, "is_production", False):
+            json_log_path = _settings.LOG_FILE_PATH.parent / "app.json.log"
             logger.add(
                 json_log_path,
                 format="{message}",
@@ -286,10 +307,6 @@ class LoggerContextManager:
         
         return False  # No suprimir la excepción
 
-# Crear instancia global del logger
-app_logger = setup_logger("complexity_analyzer")
-
-
 def get_logger(name: Optional[str] = None) -> logger: # type: ignore
     """
     Obtiene un logger configurado para el módulo especificado.
@@ -308,6 +325,5 @@ def get_logger(name: Optional[str] = None) -> logger: # type: ignore
         >>> logger = get_logger(__name__)
         >>> logger.info("Mensaje de log")
     """
-    if name:
-        return logger.bind(module=name)
-    return logger
+    # Use setup_logger to ensure handlers are configured lazily.
+    return setup_logger(name)

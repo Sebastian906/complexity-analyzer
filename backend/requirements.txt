@@ -105,6 +105,7 @@ email-validator>=2.2.0           # Validación emails
 # Performance y Profiling
 # ============================================================================
 memory-profiler>=0.61.0          # Profiling de memoria
+psutil>=5.9.5                     # Cross-platform process and system utilities (mem usage on Windows)
 # py-spy>=0.3.14                 # Comentado: puede no ser compatible con 3.14
 
 # ============================================================================
