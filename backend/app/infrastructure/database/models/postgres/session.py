@@ -79,7 +79,8 @@ class Session(Base, TimestampMixin):
     )
     
     # Metadata adicional (JSON)
-    metadata = Column(JSON, nullable=True, default=dict)
+    # Nota: 'metadata' es un nombre reservado en SQLAlchemy Declarative API
+    session_metadata = Column(JSON, nullable=True, default=dict)
     
     # Revocation info
     revoked_at = Column(DateTime, nullable=True)

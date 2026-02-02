@@ -14,8 +14,8 @@ from enum import Enum
 from app.core.config import settings
 from app.core.exceptions import DatabaseException
 from app.utils.logger import get_logger
-from backend.app.infrastructure.database.mongodb_client import MongoDBClient
-from backend.app.infrastructure.database.postgresql_client import PostgreSQLClient
+from app.infrastructure.database.mongodb_client import MongoDBClient
+from app.infrastructure.database.postgresql_client import PostgreSQLClient
 
 logger = get_logger(__name__)
 

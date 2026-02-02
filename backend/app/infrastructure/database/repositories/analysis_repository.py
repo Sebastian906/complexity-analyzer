@@ -46,7 +46,9 @@ class AnalysisRepository(BaseRepository[AnalysisResult]):
         """
         try:
             await entity.insert()
-            logger.info(f"Análisis creado: {entity.id} para algoritmo {entity.algorithm.ref.id}")
+            # El algoritmo puede ser un Link o un Document directamente
+            algo_id = getattr(entity.algorithm, 'ref', entity.algorithm).id if hasattr(entity.algorithm, 'ref') or hasattr(entity.algorithm, 'id') else "unknown"
+            logger.info(f"Análisis creado: {entity.id} para algoritmo {algo_id}")
             return entity
         except Exception as e:
             logger.error(f"Error creando análisis: {e}")
@@ -148,8 +150,9 @@ class AnalysisRepository(BaseRepository[AnalysisResult]):
             # Convertir a ObjectId
             algo_id = PydanticObjectId(algorithm_id)
             
+            # Usar sintaxis de MongoDB para campos Link: algorithm.$id
             return await AnalysisResult.find(
-                AnalysisResult.algorithm.ref.id == algo_id
+                {"algorithm.$id": algo_id}
             ).to_list()
         except Exception as e:
             logger.error(f"Error obteniendo análisis de algoritmo {algorithm_id}: {e}")
@@ -171,8 +174,9 @@ class AnalysisRepository(BaseRepository[AnalysisResult]):
         try:
             algo_id = PydanticObjectId(algorithm_id)
             
+            # Usar sintaxis de MongoDB para campos Link: algorithm.$id
             return await AnalysisResult.find(
-                AnalysisResult.algorithm.ref.id == algo_id
+                {"algorithm.$id": algo_id}
             ).sort(-AnalysisResult.created_at).first_or_none()
         except Exception as e:
             logger.error(f"Error obteniendo último análisis: {e}")

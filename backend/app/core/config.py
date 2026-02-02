@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     
     # LLM APIs - Google Gemini
     GOOGLE_API_KEY: str = Field(default="")
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
     GEMINI_MAX_TOKENS: int = 4000
     GEMINI_TEMPERATURE: float = 0.0
     

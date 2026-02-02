@@ -27,6 +27,15 @@ from .database_factory import (
     MultiBackendManager,
     get_multi_backend_manager
 )
+from .repositories import (
+    BaseRepository,
+    AlgorithmRepository,
+    AnalysisRepository,
+    UserRepository,
+    MetricsRepository,
+    CacheRepository,
+    cached,
+)
 
 __all__ = [
     # MongoDB
@@ -52,4 +61,13 @@ __all__ = [
     "get_default_repository_factory",
     "MultiBackendManager",
     "get_multi_backend_manager",
+    
+    # Repositories
+    "BaseRepository",
+    "AlgorithmRepository",
+    "AnalysisRepository",
+    "UserRepository",
+    "MetricsRepository",
+    "CacheRepository",
+    "cached",
 ]
