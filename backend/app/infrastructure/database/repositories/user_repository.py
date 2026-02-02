@@ -102,13 +102,14 @@ class UserRepository(BaseRepository[User]):
                 update(User)
                 .where(User.id == id)
                 .values(**data)
-                .returning(User)
             )
             
-            result = await self.session.execute(stmt)
+            await self.session.execute(stmt)
             await self.session.commit()
             
-            user = result.scalar_one_or_none()
+            # Expirar todos los objetos cacheados y obtener usuario actualizado
+            self.session.expire_all()
+            user = await self.get_by_id(id)
             
             if user:
                 logger.info(f"Usuario {id} actualizado")

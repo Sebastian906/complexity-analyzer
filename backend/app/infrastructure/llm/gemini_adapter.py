@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Any, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.infrastructure.llm.base_llm import BaseLLM, LLMResponse
 from app.core.config import settings
@@ -18,8 +19,7 @@ class GeminiAdapter(BaseLLM):
             max_tokens=settings.GEMINI_MAX_TOKENS,
             temperature=settings.GEMINI_TEMPERATURE,
         )
-        genai.configure(api_key=self.api_key)
-        self.client = genai.GenerativeModel(self.model)
+        self.client = genai.Client(api_key=self.api_key)
 
     async def generate(
         self,
@@ -34,9 +34,10 @@ class GeminiAdapter(BaseLLM):
             if system_prompt:
                 full_prompt = f"{system_prompt}\n\n{prompt}"
 
-            response = await self.client.generate_content_async(
-                full_prompt,
-                generation_config=genai.types.GenerationConfig(
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
                     max_output_tokens=self.max_tokens,
                     temperature=self.temperature,
                     **kwargs
@@ -46,11 +47,11 @@ class GeminiAdapter(BaseLLM):
             return LLMResponse(
                 content=response.text,
                 model=self.model,
-                tokens_used=response.usage_metadata.total_token_count,
-                finish_reason=str(response.candidates[0].finish_reason),
+                tokens_used=response.usage_metadata.total_token_count if response.usage_metadata else 0,
+                finish_reason=str(response.candidates[0].finish_reason) if response.candidates else "unknown",
                 metadata={
-                    "prompt_tokens": response.usage_metadata.prompt_token_count,
-                    "completion_tokens": response.usage_metadata.candidates_token_count,
+                    "prompt_tokens": response.usage_metadata.prompt_token_count if response.usage_metadata else 0,
+                    "completion_tokens": response.usage_metadata.candidates_token_count if response.usage_metadata else 0,
                 }
             )
 

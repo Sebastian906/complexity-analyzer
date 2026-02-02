@@ -8,17 +8,15 @@ version = "1.0.0"
 description = "Sistema inteligente de análisis de complejidad algorítmica con LLMs"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
-authors = [
-    {name = "Tu Nombre", email = "tu.email@example.com"}
-]
+license = { text = "MIT" }
+authors = [{ name = "Tu Nombre", email = "tu.email@example.com" }]
 keywords = [
     "algorithm",
     "complexity",
     "analysis",
     "big-o",
     "llm",
-    "artificial-intelligence"
+    "artificial-intelligence",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -95,12 +93,7 @@ show_error_context = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = [
-    "lark.*",
-    "graphviz.*",
-    "networkx.*",
-    "sympy.*",
-]
+module = ["lark.*", "graphviz.*", "networkx.*", "sympy.*"]
 ignore_missing_imports = true
 
 # ============================================================================
@@ -131,6 +124,8 @@ markers = [
     "llm: marca tests que usan LLMs (pueden consumir créditos)",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 # ============================================================================
 # coverage - Code Coverage
@@ -171,41 +166,34 @@ directory = "htmlcov"
 line-length = 100
 target-version = "py311"
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "C",    # flake8-comprehensions
-    "B",    # flake8-bugbear
-    "UP",   # pyupgrade
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long (manejado por black)
-    "B008",  # do not perform function calls in argument defaults
-    "C901",  # too complex
+    "E501", # line too long (manejado por black)
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
 ]
-exclude = [
-    ".git",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".venv",
-    "venv",
-    "alembic",
-]
+exclude = [".git", ".mypy_cache", ".ruff_cache", ".venv", "venv", "alembic"]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]  # unused imports en __init__.py
-"tests/**/*.py" = ["S101"]  # uso de assert en tests
+"__init__.py" = ["F401"]   # unused imports en __init__.py
+"tests/**/*.py" = ["S101"] # uso de assert en tests
 
 # ============================================================================
 # pylint - Linter Avanzado
 # ============================================================================
 [tool.pylint.messages_control]
 disable = [
-    "C0111",  # missing-docstring
-    "C0103",  # invalid-name
-    "R0903",  # too-few-public-methods
-    "R0913",  # too-many-arguments
+    "C0111", # missing-docstring
+    "C0103", # invalid-name
+    "R0903", # too-few-public-methods
+    "R0913", # too-many-arguments
 ]
 
 [tool.pylint.format]

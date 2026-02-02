@@ -12,8 +12,8 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 from app.core.exceptions import AuthenticationException
@@ -22,8 +22,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # PASSWORD HASHING
-# Contexto para hashing de passwords con bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Usar bcrypt directamente (passlib tiene problemas de compatibilidad con Python 3.14+)
 
 def hash_password(password: str) -> str:
     """
@@ -39,7 +38,11 @@ def hash_password(password: str) -> str:
         >>> hashed = hash_password("mi_password_seguro")
         >>> print(hashed)  # $2b$12$...
     """
-    return pwd_context.hash(password)
+    # bcrypt tiene límite de 72 bytes, truncar si es necesario
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -58,7 +61,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         >>> verify_password("password_incorrecto", hashed)  # False
     """
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        password_bytes = plain_password.encode('utf-8')[:72]
+        hashed_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
     except Exception as e:
         logger.error(f"Error verificando password: {e}")
         return False

@@ -165,8 +165,9 @@ class AuditLog(Base, TimestampMixin):
     # Performance
     duration_ms = Column(Integer, nullable=True)  # Duración de la operación
     
-    # Metadata
-    metadata = Column(JSON, nullable=True, default=dict)
+    # Metadata adicional
+    # Nota: 'metadata' es un nombre reservado en SQLAlchemy Declarative API
+    audit_metadata = Column(JSON, nullable=True, default=dict)
     
     # Timestamp ya viene de TimestampMixin (created_at)
     # Pero podemos agregar timestamp explícito para el evento
