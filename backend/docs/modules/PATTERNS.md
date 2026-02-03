@@ -1,12 +1,12 @@
-# Modulo 3: Deteccion de Patrones Algoritmicos
+# Módulo 3: Detección de Patrones Algorítmicos
 
-Documentacion completa del modulo de deteccion automatica de patrones y tecnicas algoritmicas.
+Documentación completa del módulo de detección automática de patrones y técnicas algorítmicas.
 
 ---
 
 ## Tabla de Contenidos
 
-1. [Descripcion General](#descripcion-general)
+1. [Descripción General](#descripción-general)
 2. [Arquitectura](#arquitectura)
 3. [Patrones Soportados](#patrones-soportados)
 4. [Componentes](#componentes)
@@ -15,7 +15,7 @@ Documentacion completa del modulo de deteccion automatica de patrones y tecnicas
 7. [API Reference](#api-reference)
 8. [Ejemplos](#ejemplos)
 9. [Testing](#testing)
-10. [Integracion con Modulos](#integracion-con-modulos)
+10. [Integración con Módulos](#integración-con-módulos)
 
 ---
 

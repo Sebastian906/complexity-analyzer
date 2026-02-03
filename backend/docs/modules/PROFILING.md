@@ -1,4 +1,4 @@
-# Módulo de Profiling - Complexity Analyzer
+# Módulo de Profiling
 
 Sistema completo de profiling de performance para monitorear y optimizar el rendimiento del backend.
 

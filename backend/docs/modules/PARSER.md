@@ -1,15 +1,15 @@
-# Modulo 1: Parser de Pseudocodigo
+# Módulo 1: Parser de Pseudocódigo
 
-Documentacion completa del modulo de parsing de pseudocodigo a Abstract Syntax Tree (AST).
+Documentación completa del módulo de parsing de pseudocódigo a Abstract Syntax Tree (AST).
 
 ---
 
 ## Tabla de Contenidos
 
-1. [Descripcion General](#descripcion-general)
+1. [Descripción General](#descripción-general)
 2. [Arquitectura](#arquitectura)
 3. [Componentes](#componentes)
-4. [Gramatica Soportada](#gramatica-soportada)
+4. [Gramática Soportada](#gramática-soportada)
 5. [Nodos AST](#nodos-ast)
 6. [Uso](#uso)
 7. [API Reference](#api-reference)
