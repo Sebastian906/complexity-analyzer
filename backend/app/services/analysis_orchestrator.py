@@ -130,11 +130,11 @@ class AnalysisOrchestrator:
             with self.monitor.monitor("analyze_complete", module="orchestrator") as metrics:
                 result = await self._execute_analysis(request)
                 
-                # Log métricas si la operación fue lenta
-                if metrics and metrics.duration_seconds > 2.0:
+                # Log métricas si la operación fue lenta (execution_time_ms > 2000ms = 2s)
+                if metrics and metrics.execution_time_ms > 2000:
                     logger.warning(
-                        f"Análisis completo lento: {metrics.duration_seconds:.2f}s, "
-                        f"memoria: {metrics.memory_used_mb:.2f}MB"
+                        f"Análisis completo lento: {metrics.execution_time_ms/1000:.2f}s, "
+                        f"memoria: {metrics.memory_delta_mb:.2f}MB"
                     )
                 
                 return result
@@ -748,16 +748,17 @@ class AnalysisOrchestrator:
         visualizations = []
 
         # Árbol de recursión
-        if request.visualization_options.generate_recursion_tree:
+        from app.schemas.analysis_request import VisualizationType
+        if VisualizationType.RECURSION_TREE in request.visualization_options.types:
             if complexity and complexity.has_tight_bound:  # Simplificado
                 try:
                     tree_result = generate_recursion_tree(
                         ast,
-                        start_value=request.visualization_options.recursion_tree_start_value,
-                        max_depth=request.visualization_options.recursion_tree_depth
+                        start_value=request.visualization_options.start_value,
+                        max_depth=request.visualization_options.max_depth
                     )
 
-                    render_format = RenderFormat(request.visualization_options.visualization_format)
+                    render_format = RenderFormat(request.visualization_options.format)
                     rendered = render_diagram(tree_result, format=render_format)
 
                     content = rendered.content
@@ -767,7 +768,7 @@ class AnalysisOrchestrator:
                     visualizations.append(
                         VisualizationResult(
                             type="recursion_tree",
-                            format=request.visualization_options.visualization_format,
+                            format=request.visualization_options.format,
                             content=content,
                             file_path=None,
                             statistics={
@@ -782,10 +783,10 @@ class AnalysisOrchestrator:
                     logger.warning(f"Error en árbol de recursión: {e}")
 
         # Flujo de ejecución
-        if request.visualization_options.generate_execution_flow:
+        if VisualizationType.EXECUTION_FLOW in request.visualization_options.types:
             try:
                 flow_result = generate_execution_flow(ast)
-                render_format = RenderFormat(request.visualization_options.visualization_format)
+                render_format = RenderFormat(request.visualization_options.format)
                 rendered = render_diagram(flow_result, format=render_format)
 
                 content = rendered.content
@@ -795,7 +796,7 @@ class AnalysisOrchestrator:
                 visualizations.append(
                     VisualizationResult(
                         type="execution_flow",
-                        format=request.visualization_options.visualization_format,
+                        format=request.visualization_options.format,
                         content=content,
                         file_path=None,
                         statistics=flow_result.statistics,
