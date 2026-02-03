@@ -144,6 +144,7 @@ class TokenType(str, Enum):
 class ASTNodeType(str, Enum):
     """Tipos de nodos del Abstract Syntax Tree"""
     PROGRAM = "program"
+    CLASS_DEFINITION = "class_definition"
     ALGORITHM = "algorithm"
     BLOCK = "block"
     FOR_LOOP = "for_loop"

@@ -244,11 +244,6 @@ class BaseExporter(ABC):
         if self.config.output_path:
             output_path = self.config.output_path
             
-            # Asegurar que esté en la carpeta correcta del formato
-            if output_path.parent.name != format_folder:
-                # Reemplazar carpeta padre con la correcta
-                output_path = Path("data/exports") / format_folder / output_path.name
-            
             # Si hay sufijo, modificar el nombre manteniendo la carpeta
             if suffix:
                 stem = output_path.stem

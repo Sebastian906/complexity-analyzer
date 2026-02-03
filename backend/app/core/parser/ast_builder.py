@@ -226,26 +226,23 @@ class ASTBuilder(Transformer):
                 access_type="variable"
             )
 
-        # Array access o object field
-        indices = []
-        field_name = None
-        access_type = "variable"
+        # Object field access: IDENTIFIER "." IDENTIFIER
+        # El segundo elemento será un string (nombre del campo) porque IDENTIFIER() retorna str
+        # Para array access, el segundo elemento será una expresión (nodo AST)
+        if len(items) == 2 and isinstance(items[1], str):
+            return LValueNode(
+                name=name,
+                access_type="object_field",
+                field_name=items[1]
+            )
 
-        for item in items[1:]:
-            if isinstance(item, Token) and item.type == 'IDENTIFIER':
-                # Object field access
-                field_name = str(item)
-                access_type = "object_field"
-            else:
-                # Array index
-                indices.append(item)
-                access_type = "array"
+        # Array access: los índices son expresiones (nodos AST), no strings
+        indices = [item for item in items[1:] if not isinstance(item, str)]
 
         return LValueNode(
             name=name,
-            access_type=access_type,
-            indices=indices,
-            field_name=field_name
+            access_type="array",
+            indices=indices
         )
 
     # Ciclos

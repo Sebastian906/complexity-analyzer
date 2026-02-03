@@ -114,10 +114,24 @@ class BaseComplexityAnalyzer(ABC):
         # Simplificaciones comunes
         if c1 == "n" and c2 == "n":
             return "n^2"
+        if c1 == "n" and c2 == "n^2":
+            return "n^3"
+        if c1 == "n^2" and c2 == "n":
+            return "n^3"
+        if c1 == "n" and c2 == "n^3":
+            return "n^4"
+        if c1 == "n^3" and c2 == "n":
+            return "n^4"
+        if c1 == "n^2" and c2 == "n^2":
+            return "n^4"
         if c1 == "n" and c2 == "log n":
             return "n log n"
         if c1 == "log n" and c2 == "n":
             return "n log n"
+        if c1 == "n^2" and c2 == "log n":
+            return "n^2 log n"
+        if c1 == "log n" and c2 == "n^2":
+            return "n^2 log n"
         
         # Por ahora, retornar concatenación
         return f"{c1} * {c2}"

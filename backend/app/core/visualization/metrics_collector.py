@@ -223,7 +223,7 @@ class MetricsCollector:
         self._all_batches: List[BatchMetrics] = []
         self._alerts: List[Alert] = []
         self._alert_counter = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock permite re-adquisición desde el mismo hilo
         
         # Estadísticas agregadas
         self._stats = defaultdict(list)

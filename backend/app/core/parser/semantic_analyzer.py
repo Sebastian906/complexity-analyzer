@@ -17,7 +17,7 @@ from app.core.parser.ast_nodes import (
     AssignmentNode, ForLoopNode, WhileLoopNode, RepeatLoopNode,
     IfStatementNode, CallStatementNode, ReturnStatementNode,
     VariableNode, LValueNode, ArrayAccessNode, BinaryOpNode,
-    UnaryOpNode, FunctionCallNode, ParameterNode
+    UnaryOpNode, FunctionCallNode, ParameterNode, RangeNode
 )
 from app.core.exceptions import SemanticErrorException
 from app.utils.logger import setup_logger
@@ -123,6 +123,60 @@ class SemanticAnalyzer:
         # Por ahora, solo log
         self.logger.debug(f"Clase registrada: {class_def.name}")
     
+    def _register_dimension_variables(self, dimension):
+        """
+        Registra las variables implícitas que aparecen en las dimensiones de arrays.
+        
+        Por ejemplo:
+        - A[n] -> registra 'n' como variable implícita
+        - A[1..n] -> registra 'n' como variable implícita
+        - A[m][n] -> registra 'm' y 'n' como variables implícitas
+        
+        Args:
+            dimension: Puede ser None, int, str, RangeNode, o string "start..end"
+        """
+        import re
+        
+        if dimension is None:
+            return
+        
+        if isinstance(dimension, int):
+            # Dimensión numérica, no hay variable
+            return
+        
+        if isinstance(dimension, RangeNode):
+            # RangeNode tiene start y end - extraer variables de ambos
+            for bound in [dimension.start, dimension.end]:
+                if isinstance(bound, str):
+                    identifiers = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', bound)
+                    for var_name in identifiers:
+                        if var_name not in self.declared_vars:
+                            var_info = VariableInfo(
+                                name=var_name,
+                                is_parameter=True,
+                                is_array=False
+                            )
+                            self.symbol_table[var_name] = var_info
+                            self.declared_vars.add(var_name)
+                            self.logger.debug(f"Variable implícita de RangeNode registrada: {var_name}")
+            return
+        
+        if isinstance(dimension, str):
+            # Puede ser una variable simple como 'n' o un rango como '1..n'
+            # Buscar todos los identificadores (no números) en la dimensión
+            identifiers = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', dimension)
+            for var_name in identifiers:
+                if var_name not in self.declared_vars:
+                    # Registrar como variable implícita de tamaño
+                    var_info = VariableInfo(
+                        name=var_name,
+                        is_parameter=True,  # Se considera parámetro implícito
+                        is_array=False
+                    )
+                    self.symbol_table[var_name] = var_info
+                    self.declared_vars.add(var_name)
+                    self.logger.debug(f"Variable implícita de dimensión registrada: {var_name}")
+
     def _analyze_algorithm(self, algorithm: AlgorithmNode):
         """Analiza un algoritmo"""
         self.current_algorithm = algorithm.name
@@ -145,6 +199,12 @@ class SemanticAnalyzer:
             )
             self.symbol_table[param.name] = var_info
             self.declared_vars.add(param.name)
+            
+            # Registrar variables implícitas de las dimensiones del array
+            # Por ejemplo, en A[n] o A[1..n], 'n' es una variable implícita
+            if param.param_type == "array":
+                for dim in param.array_dimensions:
+                    self._register_dimension_variables(dim)
         
         # Analizar el cuerpo
         if algorithm.body:

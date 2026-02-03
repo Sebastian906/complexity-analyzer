@@ -62,23 +62,21 @@ class ProgramNode(ASTNode):
 # Definición de Clases
 @dataclass
 class ClassDefinitionNode(ASTNode):
-    """Definición del algoritmo principal"""
+    """Definición de una clase/estructura de datos"""
     name: str
-    parameters: List['ParameterNode'] = field(default_factory=list)
-    body: Optional['BlockNode'] = None
+    attributes: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        self.node_type = ASTNodeType.ALGORITHM
+        self.node_type = ASTNodeType.CLASS_DEFINITION
 
     def __repr__(self):
-        return f"Algorithm({self.name}, params={len(self.parameters)})"
+        return f"ClassDefinition({self.name}, attrs={self.attributes})"
 
     def to_dict(self) -> dict:
         return {
             "type": self.node_type.value,
             "name": self.name,
-            "parameters": [p.to_dict() for p in self.parameters],
-            "body": self.body.to_dict() if self.body else None
+            "attributes": self.attributes
         }
 
 # Algoritmo

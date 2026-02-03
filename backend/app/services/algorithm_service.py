@@ -85,6 +85,31 @@ class AlgorithmService:
         
         logger.info(f"AlgorithmService inicializado - Storage: {self.storage_path}")
 
+    # Validation
+    async def validate_code(self, code: str) -> bool:
+        """
+        Valida que el código sea sintácticamente correcto.
+        
+        Args:
+            code: Código a validar
+            
+        Returns:
+            True si el código es válido
+            
+        Raises:
+            ValidationException: Si el código no es válido
+        """
+        # Validar tamaño
+        self._validate_code_size(code)
+        
+        # Validar sintaxis parseando el código
+        try:
+            self.parser.parse(code, validate=True)
+            return True
+        except Exception as e:
+            logger.error(f"Error validando código: {e}")
+            raise ValidationException(f"Código inválido: {e}")
+
     # CRUD Operations
     async def create(self, request: AlgorithmCreate) -> AlgorithmResponse:
         """
