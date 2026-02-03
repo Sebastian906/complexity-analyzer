@@ -450,7 +450,7 @@ def test_cache_service_operations()
 
 ## Próximos Pasos (Módulo 6)
 
-1. **Integrar bases de datos:**
+1. **Integrar bases de datos:******
    - MongoDB para algoritmos y análisis
    - PostgreSQL para usuarios y métricas
    - Redis para caché distribuido

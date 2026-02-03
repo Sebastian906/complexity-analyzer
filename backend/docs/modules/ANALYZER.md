@@ -1,12 +1,12 @@
-# Modulo 2: Analisis de Complejidad
+# Módulo 2: Análisis de Complejidad
 
-Documentacion completa del modulo de analisis de complejidad algoritmica.
+Documentación completa del módulo de análisis de complejidad algorítmica.
 
 ---
 
 ## Tabla de Contenidos
 
-1. [Descripcion General](#descripcion-general)
+1. [Descripción General](#descripción-general)
 2. [Arquitectura](#arquitectura)
 3. [Componentes](#componentes)
 4. [Ecuaciones de Recurrencia](#ecuaciones-de-recurrencia)
@@ -17,9 +17,9 @@ Documentacion completa del modulo de analisis de complejidad algoritmica.
 
 ---
 
-## Descripcion General
+## Descripción General
 
-El modulo de analisis es el nucleo del sistema. Recibe un AST (del [Modulo 1 - Parser](../app/core/parser/)) y calcula:
+El módulo de análisis es el núcleo del sistema. Recibe un AST (del [Módulo 1 - Parser](PARSER.md)) y calcula:
 
 ### Analisis Temporal
 
