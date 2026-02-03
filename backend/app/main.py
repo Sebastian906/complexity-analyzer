@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             enable_profiling(
                 enable_timing=True,
                 enable_memory=True,
-                enable_tracemalloc=(settings.APP_ENV == "development")
+                use_tracemalloc=(settings.APP_ENV == "development")
             )
             logger.info("Profiling habilitado")
         else:
@@ -211,8 +211,8 @@ async def profiling_middleware(request: Request, call_next):
         
         # Agregar headers de profiling a la respuesta
         if metrics:
-            response.headers["X-Process-Time"] = f"{metrics.duration_seconds:.4f}"
-            response.headers["X-Memory-Used-MB"] = f"{metrics.memory_used_mb:.2f}"
+            response.headers["X-Process-Time"] = f"{metrics.execution_time_ms / 1000:.4f}"
+            response.headers["X-Memory-Used-MB"] = f"{metrics.memory_delta_mb:.2f}"
             response.headers["X-Performance-Level"] = metrics.performance_level.value
     
     return response
