@@ -189,21 +189,23 @@ async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
         # 8. Construir LineByLineAnalysis
         line_by_line = None
         if result.line_by_line:
+            # Filtrar líneas con line_number válido (>= 1)
+            valid_lines = [line for line in result.line_by_line.lines if line.line_number >= 1]
             line_by_line = LineByLineAnalysis(
                 lines=[
                     LineExecution(
                         line_number=line.line_number,
-                        code=line.code,
+                        code=getattr(line, 'code', f"Línea {line.line_number}"),
                         execution_count=line.execution_count,
                         statement_type=line.statement_type,
-                        complexity_contribution=line.complexity_contribution,
+                        complexity_contribution=getattr(line, 'complexity_contribution', line.execution_count),
                         explanation=line.explanation,
                         location=None,
                     )
-                    for line in result.line_by_line.lines
+                    for line in valid_lines
                 ],
                 dominant_complexity=result.big_o,
-                total_lines=len(result.line_by_line.lines),
+                total_lines=len(valid_lines),
                 summary=f"Análisis línea por línea de {ast.algorithm.name}",
             )
 
@@ -330,12 +332,15 @@ async def _analyze_line_by_line_impl(code: str):
         
         lines_data = []
         for line in result.lines:
+            # Filtrar líneas con line_number inválido
+            if line.line_number < 1:
+                continue
             lines_data.append({
                 "line_number": line.line_number,
-                "code": line.code,
+                "code": getattr(line, 'code', f"Línea {line.line_number}"),
                 "execution_count": line.execution_count,
                 "statement_type": line.statement_type,
-                "complexity_contribution": line.complexity_contribution,
+                "complexity_contribution": getattr(line, 'complexity_contribution', line.execution_count),
                 "explanation": line.explanation
             })
         

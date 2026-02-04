@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any
 
 from app.core.parser import PseudocodeParser, ASTValidator, SemanticAnalyzer
-from app.core.exceptions import ValidationException
+from app.core.exceptions import ValidationException, SemanticErrorException
 from app.core.config import settings
 from app.utils.logger import setup_logger
 
@@ -276,6 +276,34 @@ class ValidationService:
                 )
 
             result.metadata["semantic_valid"] = is_valid
+
+        except SemanticErrorException as e:
+            # Capturar errores semánticos específicamente
+            result.is_valid = False
+            
+            # Extraer errores del analizador semántico si están disponibles
+            if self.semantic_analyzer.errors:
+                for error in self.semantic_analyzer.errors:
+                    result.errors.append(
+                        ValidationIssue(
+                            severity=IssueSeverity.ERROR,
+                            message=error,
+                            rule="semantic",
+                        )
+                    )
+            else:
+                # Si no hay errores en el analizador, usar el contexto de la excepción
+                error_message = str(e.context) if hasattr(e, 'context') and e.context else str(e)
+                result.errors.append(
+                    ValidationIssue(
+                        severity=IssueSeverity.ERROR,
+                        message=f"Error semántico: {error_message}",
+                        rule="semantic",
+                    )
+                )
+            
+            result.metadata["semantic_valid"] = False
+            logger.debug(f"Errores semánticos detectados: {len(result.errors)}")
 
         except Exception as e:
             logger.error(f"Error en validación semántica: {e}")
