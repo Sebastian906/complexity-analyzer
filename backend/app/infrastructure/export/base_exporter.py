@@ -24,12 +24,13 @@ class ExportFormat(str, Enum):
     JSON = "json"
     MARKDOWN = "md"
     PDF = "pdf"
-    EXCEL = "xlsx"
+    EXCEL = "excel"
     HTML = "html"
     CSV = "csv"
-    DOT = "dot"
-    MERMAID = "mmd"
-    SVG = "svg"
+    DOT = "dot"              # Graphviz
+    MERMAID = "mmd"          # Mermaid diagrams
+    SVG = "svg"              # SVG graphics
+    TXT = "txt"              # Plain text
 
 @dataclass
 class ExportConfig:
