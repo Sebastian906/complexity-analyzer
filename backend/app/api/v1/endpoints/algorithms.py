@@ -5,7 +5,7 @@ Endpoints REST para operaciones CRUD de algoritmos.
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 
 from app.schemas import (
     AlgorithmCreate,
@@ -14,6 +14,7 @@ from app.schemas import (
     AlgorithmResponse,
     AlgorithmListResponse,
     AlgorithmMetadata,
+    AlgorithmSearchCriteria,
 )
 from app.services import AlgorithmService
 from app.utils.logger import setup_logger
@@ -21,29 +22,39 @@ from app.utils.logger import setup_logger
 logger = setup_logger(__name__)
 router = APIRouter()
 
-# Instancia del servicio
-algorithm_service = AlgorithmService()
+_service_instance = None
+
+async def get_algorithm_service() -> AlgorithmService:
+    """
+    Dependency para obtener instancia del AlgorithmService.
+    
+    Inicializa la conexión a MongoDB la primera vez.
+    """
+    global _service_instance
+    
+    if _service_instance is None:
+        _service_instance = AlgorithmService()
+        # INICIALIZAR CONEXIÓN A MONGODB
+        await _service_instance.initialize()
+        logger.info("AlgorithmService inicializado con MongoDB")
+    
+    return _service_instance
 
 @router.post(
     "",
     response_model=AlgorithmResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear Algoritmo",
-    description="Crea y almacena un nuevo algoritmo"
+    description="Crea y almacena un nuevo algoritmo en MongoDB"
 )
-async def create_algorithm(request: AlgorithmCreate):
+async def create_algorithm(
+    request: AlgorithmCreate,
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
     """Crea un nuevo algoritmo"""
     try:
-        result = await algorithm_service.create(request)
-        
-        # Usar result.algorithm directamente del servicio
-        return AlgorithmResponse(
-            success=True,
-            message="Algoritmo creado exitosamente",
-            timestamp=None,
-            data=result.algorithm.model_dump(),  # Dict para "data"
-            algorithm=result.algorithm,  # Objeto para validación del schema
-        )
+        result = await service.create(request)
+        return result
     except Exception as e:
         logger.error(f"Error creando algoritmo: {e}")
         raise HTTPException(
@@ -55,11 +66,14 @@ async def create_algorithm(request: AlgorithmCreate):
     "/{algorithm_id}",
     response_model=AlgorithmResponse,
     summary="Obtener Algoritmo",
-    description="Obtiene un algoritmo por ID"
+    description="Obtiene un algoritmo por ID desde MongoDB"
 )
-async def get_algorithm(algorithm_id: str):
+async def get_algorithm(
+    algorithm_id: str,
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
     """Obtiene un algoritmo específico"""
-    result = await algorithm_service.get(algorithm_id)
+    result = await service.get(algorithm_id)
     
     if not result:
         raise HTTPException(
@@ -67,17 +81,21 @@ async def get_algorithm(algorithm_id: str):
             detail=f"Algoritmo no encontrado: {algorithm_id}"
         )
     
-    # result ya es AlgorithmResponse del servicio
     return result
 
 @router.put(
     "/{algorithm_id}",
     response_model=AlgorithmResponse,
-    summary="Actualizar Algoritmo"
+    summary="Actualizar Algoritmo",
+    description="Actualiza un algoritmo existente en MongoDB"
 )
-async def update_algorithm(algorithm_id: str, request: AlgorithmUpdate):
+async def update_algorithm(
+    algorithm_id: str,
+    request: AlgorithmUpdate,
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
     """Actualiza un algoritmo"""
-    result = await algorithm_service.update(algorithm_id, request)
+    result = await service.update(algorithm_id, request)
     
     if not result:
         raise HTTPException(
@@ -90,11 +108,15 @@ async def update_algorithm(algorithm_id: str, request: AlgorithmUpdate):
 @router.delete(
     "/{algorithm_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Eliminar Algoritmo"
+    summary="Eliminar Algoritmo",
+    description="Elimina un algoritmo de MongoDB"
 )
-async def delete_algorithm(algorithm_id: str):
+async def delete_algorithm(
+    algorithm_id: str,
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
     """Elimina un algoritmo"""
-    deleted = await algorithm_service.delete(algorithm_id)
+    deleted = await service.delete(algorithm_id)
     
     if not deleted:
         raise HTTPException(
@@ -105,23 +127,51 @@ async def delete_algorithm(algorithm_id: str):
 @router.get(
     "",
     response_model=AlgorithmListResponse,
-    summary="Listar Algoritmos"
+    summary="Listar Algoritmos",
+    description="Lista algoritmos desde MongoDB con filtros y paginación"
 )
 async def list_algorithms(
-    category: Optional[str] = Query(None),
-    tags: Optional[List[str]] = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100)
+    category: Optional[str] = Query(None, description="Filtrar por categoría"),
+    tags: Optional[List[str]] = Query(None, description="Filtrar por tags"),
+    page: int = Query(1, ge=1, description="Número de página"),
+    page_size: int = Query(10, ge=1, le=100, description="Elementos por página"),
+    service: AlgorithmService = Depends(get_algorithm_service)
 ):
     """Lista algoritmos con filtros y paginación"""
-    from app.services.algorithm_service import AlgorithmSearchCriteria as InternalCriteria
+    from app.schemas.algorithm import AlgorithmCategory
     
-    criteria = InternalCriteria(
-        category=category,
+    # Construir criterios de búsqueda
+    criteria = AlgorithmSearchCriteria(
+        category=AlgorithmCategory(category) if category else None,
         tags=tags,
-        limit=page_size,
-        offset=(page - 1) * page_size
     )
     
-    # El servicio ya retorna AlgorithmListResponse
-    return await algorithm_service.search(criteria)
+    # Agregar paginación manualmente
+    criteria.limit = page_size
+    criteria.offset = (page - 1) * page_size
+    
+    return await service.search(criteria)
+
+@router.post(
+    "/search",
+    response_model=AlgorithmListResponse,
+    summary="Buscar Algoritmos",
+    description="Busca algoritmos en MongoDB con criterios avanzados"
+)
+async def search_algorithms(
+    criteria: AlgorithmSearchCriteria,
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
+    """Busca algoritmos con criterios avanzados"""
+    return await service.search(criteria)
+
+@router.get(
+    "/statistics",
+    summary="Obtener Estadísticas",
+    description="Obtiene estadísticas de algoritmos almacenados en MongoDB"
+)
+async def get_statistics(
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
+    """Obtiene estadísticas de algoritmos"""
+    return await service.get_statistics()
