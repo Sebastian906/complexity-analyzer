@@ -39,6 +39,7 @@ from app.infrastructure.export.dot_exporter import DOTExporter, export_to_dot
 from app.infrastructure.export.mermaid_exporter import MermaidExporter, export_to_mermaid
 from app.infrastructure.export.svg_exporter import SVGExporter, export_to_svg
 from app.infrastructure.export.html_exporter import HTMLExporter, export_to_html
+from app.infrastructure.export.txt_exporter import TXTExporter, export_to_txt
 
 # PDF y Excel son opcionales (requieren librerías externas)
 try:
@@ -69,6 +70,7 @@ class ExporterFactory:
         ExportFormat.MERMAID: MermaidExporter,
         ExportFormat.SVG: SVGExporter,
         ExportFormat.HTML: HTMLExporter,
+        ExportFormat.TXT: TXTExporter,
     }
     
     if PDF_AVAILABLE:
@@ -288,6 +290,7 @@ __all__ = [
     "MermaidExporter",
     "SVGExporter",
     "HTMLExporter",
+    "TXTExporter",
     
     # Optional exporters
     "PDFExporter",  # Puede no estar disponible
@@ -301,6 +304,7 @@ __all__ = [
     "export_to_mermaid",
     "export_to_svg",
     "export_to_html",
+    "export_to_txt",
     "export_to_pdf",  # Puede no estar disponible
     "export_to_excel",  # Puede no estar disponible
     

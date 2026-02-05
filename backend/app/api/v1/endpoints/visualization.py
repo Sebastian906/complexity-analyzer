@@ -321,6 +321,46 @@ async def get_render_formats():
             "mime_type": "application/json",
             "scalable": True,
             "recommended_for": ["data", "api"]
+        },
+        {
+            "format": "csv",
+            "name": "CSV",
+            "description": "Comma-Separated Values",
+            "mime_type": "text/csv",
+            "scalable": True,
+            "recommended_for": ["data", "spreadsheets", "analysis"]
+        },
+        {
+            "format": "excel",
+            "name": "Excel",
+            "description": "Microsoft Excel Spreadsheet",
+            "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "scalable": True,
+            "recommended_for": ["data", "analysis", "reports"]
+        },
+        {
+            "format": "html",
+            "name": "HTML",
+            "description": "HyperText Markup Language",
+            "mime_type": "text/html",
+            "scalable": True,
+            "recommended_for": ["web", "documentation", "reports"]
+        },
+        {
+            "format": "md",
+            "name": "Markdown",
+            "description": "Markdown Documentation",
+            "mime_type": "text/markdown",
+            "scalable": True,
+            "recommended_for": ["documentation", "readme", "notes"]
+        },
+        {
+            "format": "txt",
+            "name": "Plain Text",
+            "description": "Plain Text File",
+            "mime_type": "text/plain",
+            "scalable": True,
+            "recommended_for": ["logs", "simple output", "debugging"]
         }
     ]
 

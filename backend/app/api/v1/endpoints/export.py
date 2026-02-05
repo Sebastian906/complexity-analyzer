@@ -135,7 +135,6 @@ async def get_available_formats():
     return AvailableExportsResponse(
         success=True,
         message="Formatos y templates disponibles",
-        timestamp=None,
         formats=list(available),
         templates=templates,
         sections=list(ExportSection),
