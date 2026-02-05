@@ -33,6 +33,10 @@ from app.schemas import (
     AlgorithmResponse,
     AlgorithmListResponse,
 )
+
+from app.infrastructure.database.repositories import AlgorithmRepository
+from app.infrastructure.database.models.mongo import Algorithm as AlgorithmModel
+
 from app.utils.logger import setup_logger
 
 from app.profiling import get_performance_monitor
@@ -59,7 +63,8 @@ class AlgorithmService:
     def __init__(
         self,
         storage_path: Optional[Path] = None,
-        parser: Optional[PseudocodeParser] = None
+        parser: Optional[PseudocodeParser] = None,
+        repository: Optional[AlgorithmRepository] = None
     ):
         """
         Inicializa el servicio.
@@ -72,6 +77,8 @@ class AlgorithmService:
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.parser = parser or PseudocodeParser()
+        self.repository = repository or AlgorithmRepository()
+        self._initialized = False
 
         # Índice en memoria (migrar a MongoDB en producción)
         self._algorithms: dict[str, Algorithm] = {}
@@ -84,6 +91,29 @@ class AlgorithmService:
             self.monitor = None
         
         logger.info(f"AlgorithmService inicializado - Storage: {self.storage_path}")
+
+    async def initialize(self):
+        """
+        Inicializa la conexión a MongoDB.
+        
+        Debe llamarse después de crear la instancia.
+        """
+        if self._initialized:
+            return
+            
+        if self.repository is None:
+            from app.infrastructure.database import get_mongodb_client
+            
+            # Conectar a MongoDB si no está conectado
+            mongo_client = get_mongodb_client()
+            if not mongo_client.is_connected:
+                await mongo_client.connect()
+            
+            # Crear repository
+            self.repository = AlgorithmRepository()
+        
+        self._initialized = True
+        logger.info("AlgorithmService conectado a MongoDB")
 
     # Validation
     async def validate_code(self, code: str) -> bool:
@@ -149,11 +179,40 @@ class AlgorithmService:
         # Extraer información del AST
         algorithm_info = self._extract_algorithm_info(ast)
 
-        # Generar ID único
-        algorithm_id = str(uuid4())
-
-        # Crear objeto Algorithm
+        # No forzamos un id para MongoDB: dejamos que Beanie genere el ObjectId
+        # Generar timestamps
         now = datetime.utcnow()
+
+        # Crear modelo para MongoDB (sin id para que Mongo genere ObjectId)
+        algorithm_model = AlgorithmModel(
+            name=request.name,
+            description=request.description,
+            category=request.category.value if request.category else None,
+            tags=request.tags or [],
+            language=request.language.value if hasattr(request.language, 'value') else (request.language or "pseudocode"),
+            code=request.code,
+            created_at=now,
+            updated_at=now,
+        )
+
+        # Guardar en MongoDB (si hay repository)
+        if self.repository:
+            created_model = await self.repository.create(algorithm_model)
+            # Obtener id asignado por Mongo como string
+            algorithm_id = str(created_model.id)
+            logger.info(f"Algoritmo guardado en MongoDB: {algorithm_id}")
+            # Usar timestamps devueltos por el modelo creado si existen
+            created_at = getattr(created_model, 'created_at', now)
+            updated_at = getattr(created_model, 'updated_at', now)
+        else:
+            # Fallback: usar un UUID local si no hay repository
+            algorithm_id = str(uuid4())
+            created_model = algorithm_model
+            created_at = now
+            updated_at = now
+            logger.warning("Repository no disponible, solo guardado local")
+
+        # Crear objeto Algorithm (schema de respuesta) usando id como string
         algorithm = Algorithm(
             id=algorithm_id,
             name=request.name,
@@ -163,8 +222,8 @@ class AlgorithmService:
             language=request.language,
             code=request.code,
             info=algorithm_info,
-            created_at=now,
-            updated_at=now,
+            created_at=created_at,
+            updated_at=updated_at,
             analyzed=False,
             analysis_count=0,
             complexity_class=None,
@@ -204,6 +263,24 @@ class AlgorithmService:
         
     async def _get_impl(self, algorithm_id: str) -> Optional[AlgorithmResponse]:
         """Implementación interna de get."""
+        # Intentar primero desde MongoDB
+        if self.repository:
+            algorithm_model = await self.repository.get_by_id(algorithm_id)
+            
+            if algorithm_model:
+                # Convertir modelo MongoDB a schema
+                algorithm = self._model_to_schema(algorithm_model)
+                
+                # Actualizar caché
+                self._algorithms[algorithm_id] = algorithm
+                
+                return AlgorithmResponse(
+                    success=True,
+                    message="Algoritmo recuperado exitosamente",
+                    algorithm=algorithm
+                )
+        
+        # Fallback: buscar en caché local
         algorithm = self._algorithms.get(algorithm_id)
         
         if not algorithm:
@@ -328,15 +405,21 @@ class AlgorithmService:
             logger.warning(f"Algoritmo no encontrado para eliminar: {algorithm_id}")
             return False
 
-        logger.info(f"Eliminando algoritmo: {algorithm_id}")
-
-        # Eliminar del disco
+        # Eliminar de MongoDB
+        if self.repository:
+            success = await self.repository.delete(algorithm_id)
+            if success:
+                logger.info(f"Algoritmo eliminado de MongoDB: {algorithm_id}")
+            else:
+                logger.warning(f"Algoritmo no encontrado en MongoDB: {algorithm_id}")
+        
+        # Eliminar del disco y caché
+        if algorithm_id in self._algorithms:
+            del self._algorithms[algorithm_id]
+        
         file_path = self._get_file_path(algorithm_id)
         if file_path.exists():
             file_path.unlink()
-
-        # Eliminar del índice
-        del self._algorithms[algorithm_id]
 
         logger.info(f"Algoritmo eliminado: {algorithm_id}")
         return True
@@ -556,6 +639,36 @@ class AlgorithmService:
         """Calcula la profundidad máxima de anidación."""
         # Simplificado - implementar lógica real
         return 0
+    
+    def _model_to_schema(self, model: AlgorithmModel) -> Algorithm:
+        """Convierte AlgorithmModel MongoDB a Algorithm schema."""
+        # Reconstruir AlgorithmInfo
+        info = AlgorithmInfo(
+            name=model.name,
+            parameters=[],
+            has_recursion=False,
+            has_loops=False,
+            max_nesting_depth=0,
+            total_lines=len(model.code.splitlines()),
+            total_statements=0,
+        )
+
+        return Algorithm(
+            id=str(model.id),
+            name=model.name,
+            description=model.description,
+            category=AlgorithmCategory(model.category) if model.category else AlgorithmCategory.OTHER,
+            tags=model.tags or [],
+            language=model.language or "pseudocode",
+            code=model.code,
+            info=info,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            analyzed=getattr(model, 'analyzed', False),
+            analysis_count=getattr(model, 'analysis_count', 0),
+            complexity_class=AlgorithmComplexityClass(model.complexity_class) if getattr(model, 'complexity_class', None) else None,
+            big_o=getattr(model, 'big_o', None),
+        )
 
     def _get_file_path(self, algorithm_id: str) -> Path:
         """Obtiene la ruta del archivo del algoritmo."""
