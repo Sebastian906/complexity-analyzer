@@ -168,8 +168,8 @@ class RecurrenceSolver:
         """Detecta la forma de la ecuación"""
         equation = equation.replace(" ", "").upper()
         
-        # F1: T(n) = aT(n/b) + f(n)
-        pattern = re.match(r'T\(N\)=(\d+)T\(N/(\d+)\)\+(.+)', equation)
+        # F1: T(n) = aT(n/b) + f(n) - acepta * opcional entre coeficiente y T
+        pattern = re.match(r'T\(N\)=(\d+)\*?T\(N/(\d+)\)\+(.+)', equation)
         if pattern:
             a, b, f_n = pattern.groups()
             return RecurrencePattern(
@@ -202,8 +202,8 @@ class RecurrenceSolver:
                 f_n=f_n
             )
         
-        # F5: T(n) = aT(n-b) + f(n)
-        pattern = re.match(r'T\(N\)=(\d+)T\(N-(\d+)\)\+(.+)', equation)
+        # F5: T(n) = aT(n-b) + f(n) - acepta * opcional entre coeficiente y T
+        pattern = re.match(r'T\(N\)=(\d+)\*?T\(N-(\d+)\)\+(.+)', equation)
         if pattern:
             a, b, f_n = pattern.groups()
             return RecurrencePattern(
@@ -224,8 +224,8 @@ class RecurrenceSolver:
                 f_n=f_n
             )
         
-        # F6: T(n) = aT(n-b) + cT(n-d) + f(n)
-        pattern = re.match(r'T\(N\)=(\d+)T\(N-(\d+)\)\+(\d+)T\(N-(\d+)\)\+(.+)', equation)
+        # F6: T(n) = aT(n-b) + cT(n-d) + f(n) - acepta * opcional
+        pattern = re.match(r'T\(N\)=(\d+)\*?T\(N-(\d+)\)\+(\d+)\*?T\(N-(\d+)\)\+(.+)', equation)
         if pattern:
             a, b, c, d, f_n = pattern.groups()
             return RecurrencePattern(

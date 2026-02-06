@@ -5,7 +5,8 @@ Endpoints REST para analizar algoritmos y obtener su complejidad.
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Body
+from pydantic import BaseModel, Field
 from app.schemas import (
     # Analysis Request Schemas
     ComplexityAnalysisRequest,
@@ -43,6 +44,33 @@ from app.profiling import get_performance_monitor
 logger = setup_logger(__name__)
 
 router = APIRouter()
+
+# Schema para recibir código en el body
+class CodeInput(BaseModel):
+    """Schema para recibir código en el body JSON"""
+    code: str = Field(..., description="Código del algoritmo a analizar (puede ser multilínea)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "code": "algorithm example(n)\nbegin\n    for i ← 1 to n do\n    begin\n        print(i)\n    end\nend"
+            }
+        }
+
+# Mapeo de métodos de inglés a español para solve-recurrence
+METHOD_MAPPING = {
+    "iteration": "iteracion",
+    "recursion_tree": "arbol_recursion",
+    "master_theorem": "teorema_maestro",
+    "substitution": "sustitucion_inteligente",
+    "characteristic": "ecuacion_caracteristica",
+    # También aceptar los valores en español directamente
+    "iteracion": "iteracion",
+    "arbol_recursion": "arbol_recursion",
+    "teorema_maestro": "teorema_maestro",
+    "sustitucion_inteligente": "sustitucion_inteligente",
+    "ecuacion_caracteristica": "ecuacion_caracteristica",
+}
 
 # Obtener monitor global
 _profiling_enabled = settings.APP_ENV in ["development", "staging"]
@@ -307,16 +335,50 @@ async def _analyze_quick_impl(code: str):
 @router.post(
     "/line-by-line",
     summary="Análisis Línea por Línea",
-    description="Análisis detallado de cada línea"
+    description="""
+Análisis detallado de cada línea del algoritmo.
+
+El código puede enviarse de dos formas:
+1. **Query Parameter**: `?code=...` (para código corto, URL-encoded)
+2. **Request Body**: JSON con campo `code` (recomendado para código multilínea)
+
+Ejemplo Body:
+```json
+{
+    "code": "algorithm example(n)\\nbegin\\n    for i ← 1 to n do\\n    begin\\n        print(i)\\n    end\\nend"
+}
+```
+"""
 )
-async def analyze_line_by_line(code: str = Query(..., description="Código a analizar")):
-    """Análisis línea por línea"""
+async def analyze_line_by_line(
+    code: Optional[str] = Query(None, description="Código a analizar (URL-encoded)"),
+    body: Optional[CodeInput] = Body(None, description="Código en JSON (recomendado para multilínea)")
+):
+    """
+    Análisis línea por línea.
+    
+    Acepta código via:
+    - Query parameter `code` (para compatibilidad, código URL-encoded)
+    - Request body con campo `code` (recomendado para código multilínea)
+    """
+    # Determinar fuente del código (prioridad al body)
+    source_code = None
+    if body and body.code:
+        source_code = body.code
+    elif code:
+        source_code = code
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Se requiere código. Envíe via query parameter 'code' o en el body JSON con campo 'code'"
+        )
+    
     # PROFILING: Line by line
     if _profiling_enabled and _monitor:
         with _monitor.monitor("endpoint_line_by_line", module="api"):
-            return await _analyze_line_by_line_impl(code)
+            return await _analyze_line_by_line_impl(source_code)
     else:
-        return await _analyze_line_by_line_impl(code)
+        return await _analyze_line_by_line_impl(source_code)
 
 async def _analyze_line_by_line_impl(code: str):
     """Implementación interna de line by line."""
@@ -366,7 +428,8 @@ async def _analyze_line_by_line_impl(code: str):
 async def solve_recurrence_equation(
     equation: str,
     base_case: Optional[str] = None,
-    method: Optional[str] = None
+    method: Optional[str] = None,
+    variable: Optional[str] = None
 ):
     """
     Resuelve una ecuación de recurrencia específica.
@@ -385,16 +448,26 @@ async def solve_recurrence_equation(
     else:
         return await _solve_recurrence_impl(equation, base_case, method)
 
-async def _solve_recurrence_impl(equation: str, base_case: Optional[str], method: Optional[str]):
+async def _solve_recurrence_impl(equation: str, base_case: Optional[str], method: Optional[str], variable: Optional[str] = None):
     """Implementación interna de solve recurrence."""
     try:
-        from app.core.analyzer.recurrence import solve_recurrence, SolutionMethod
+        # Importar el helper del solver, usando alias para evitar shadowing
+        from app.core.analyzer.recurrence import solve_recurrence, SolutionMethod as SolverSolutionMethod
         
         # Convertir método si se especificó
         preferred_method = None
         if method:
+            # Mapear método de inglés a español si es necesario
+            mapped_method = METHOD_MAPPING.get(method.lower())
+            if not mapped_method:
+                valid_methods = list(set(METHOD_MAPPING.keys()))
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Método inválido: {method}. Métodos válidos: {valid_methods}"
+                )
             try:
-                preferred_method = SolutionMethod(method)
+                # Construir preferred_method como el enum del solver (valores en español)
+                preferred_method = SolverSolutionMethod(mapped_method)
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -404,11 +477,39 @@ async def _solve_recurrence_impl(equation: str, base_case: Optional[str], method
         # Resolver
         result = solve_recurrence(equation, base_case, preferred_method)
 
-        # Construir RecurrenceSolution
+        # Mapear el método devuelto (enum del solver, valores en español)
+        # al enum del schema (valores en inglés) esperado por RecurrenceSolution
+        SPANISH_TO_ENGLISH = {
+            "iteracion": "iteration",
+            "arbol_recursion": "recursion_tree",
+            "teorema_maestro": "master_theorem",
+            "sustitucion_inteligente": "substitution",
+            "ecuacion_caracteristica": "characteristic",
+        }
+
+        schema_method = None
+        try:
+            if isinstance(result.method_used, SolverSolutionMethod):
+                spanish_val = result.method_used.value
+                eng = SPANISH_TO_ENGLISH.get(spanish_val)
+                if eng:
+                    # SolutionMethod del schema (importado arriba) espera valores en inglés
+                    schema_method = SolutionMethod(eng)
+                else:
+                    # Fallback: intentar usar el nombre en minúsculas
+                    schema_method = SolutionMethod(result.method_used.name.lower())
+            else:
+                # Si viene como string, intentar mapear directamente
+                schema_method = SolutionMethod(SPANISH_TO_ENGLISH.get(str(result.method_used), str(result.method_used)))
+        except Exception:
+            # Si no se pudo mapear, dejar como None y continuar (pydantic hará validación)
+            schema_method = None
+
+        # Construir RecurrenceSolution usando el método mapeado
         solution = RecurrenceSolution(
             complexity=result.complexity,
             complexity_class=_get_complexity_class(result.complexity),
-            method_used=result.method_used,
+            method_used=schema_method,
             steps=result.steps,
             verification=result.explanation,
         )
@@ -416,6 +517,7 @@ async def _solve_recurrence_impl(equation: str, base_case: Optional[str], method
         return {
             "success": True,
             "equation": equation,
+            "variable": variable,
             "base_case": base_case,
             "solution": solution.model_dump(),
         }

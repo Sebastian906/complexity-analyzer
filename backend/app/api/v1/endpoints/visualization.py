@@ -4,8 +4,8 @@ API Endpoints - Visualización
 Endpoints REST para generar visualizaciones de algoritmos.
 """
 
-from typing import Optional
-from fastapi import APIRouter, HTTPException, status
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, status, Query
 from app.schemas import (
     # Visualization Request Schemas
     VisualizationRequest,
@@ -182,13 +182,13 @@ async def generate_execution_flow_endpoint(request: VisualizationRequest):
     description="Genera representación gráfica de una estructura de datos"
 )
 async def generate_graph_endpoint(
-    structure_type: str,
-    values: Optional[list] = None,
-    num_nodes: Optional[int] = None,
-    edges_list: Optional[list] = None,
-    directed: Optional[bool] = True,
-    layout: Optional[str] = "hierarchical",
-    render_format: Optional[str] = "svg"
+    structure_type: str = Query(..., description="Tipo de estructura: tree, graph, linked_list"),
+    values: Optional[List[int]] = Query(None, description="Valores para los nodos"),
+    num_nodes: Optional[int] = Query(None, description="Número de nodos a generar"),
+    edges_list: Optional[str] = Query(None, description="Lista de aristas en formato '0-1,1-2,2-3'"),
+    directed: Optional[bool] = Query(True, description="Si el grafo es dirigido"),
+    layout: Optional[str] = Query("hierarchical", description="Tipo de layout"),
+    render_format: Optional[str] = Query("svg", description="Formato de renderizado")
 ):
     """
     Genera grafo de estructura de datos.
@@ -208,7 +208,16 @@ async def generate_graph_endpoint(
         if num_nodes:
             kwargs["num_nodes"] = num_nodes
         if edges_list:
-            kwargs["edges_list"] = [tuple(edge) for edge in edges_list]
+            # Parsear edges_list desde string "0-1,1-2" a lista de tuplas
+            try:
+                parsed_edges = []
+                for edge_str in edges_list.split(","):
+                    parts = edge_str.strip().split("-")
+                    if len(parts) == 2:
+                        parsed_edges.append((int(parts[0]), int(parts[1])))
+                kwargs["edges_list"] = parsed_edges
+            except (ValueError, AttributeError):
+                pass  # Si falla el parseo, no incluir edges_list
         if directed is not None:
             kwargs["directed"] = directed
         
