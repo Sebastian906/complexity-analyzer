@@ -8,6 +8,7 @@ incluyendo almacenamiento, búsqueda y versionado.
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Any
+from urllib import request
 from uuid import uuid4
 
 from app.core.config import settings
@@ -426,7 +427,9 @@ class AlgorithmService:
 
     async def search(
         self,
-        request: AlgorithmSearchCriteria
+        request: AlgorithmSearchCriteria,
+        page: int = 1,
+        page_size: int = 10
     ) -> AlgorithmListResponse:
         """
         Busca algoritmos según criterios.
@@ -440,134 +443,200 @@ class AlgorithmService:
         # PROFILING: Búsqueda de algoritmos
         if self.profiling_enabled and self.monitor:
             with self.monitor.monitor("algorithm_search", module="algorithm_service"):
-                return await self._search_impl(request)
+                return await self._search_impl(request, page=page, page_size=page_size)
         else:
-            return await self._search_impl(request)
+            return await self._search_impl(request, page=page, page_size=page_size)
         
     async def _search_impl(
         self,
-        request: AlgorithmSearchCriteria
+        request: AlgorithmSearchCriteria,
+        page: int = 1,
+        page_size: int = 10
     ) -> AlgorithmListResponse:
         """Implementación interna de search."""
         logger.info(f"Buscando algoritmos con criterios: {request}")
-    
-        # Construir filtro
-        filter_dict = {}
 
-        if request.category:
-            filter_dict["category"] = request.category.value
+        # BÚSQUEDA EN MONGODB
+        if self.repository:
+            try:
+                # Construir filtro MongoDB
+                filter_dict = {}
 
-        if request.tags:
-            filter_dict["tags"] = {"$all": request.tags}    
-
-        if request.complexity_class:
-            filter_dict["complexity_class"] = request.complexity_class.value
-
-        # Si se pidió solo algoritmos ya analizados
-        if getattr(request, "analyzed_only", False):
-            filter_dict["analyzed"] = True
-        # Ejecutar búsqueda sobre el índice en memoria
-        try:
-            all_algos = list(self._algorithms.values())
-
-            # Aplicar filtros
-            def matches(algo: Algorithm) -> bool:
-                # category
                 if request.category:
-                    req_cat = getattr(request, 'category')
-                    # comparar por value si es Enum
-                    if hasattr(req_cat, 'value'):
-                        if algo.category.value != req_cat.value:
-                            return False
-                    else:
-                        if algo.category.value != str(req_cat):
-                            return False
+                    filter_dict["category"] = request.category.value
 
-                # tags (todos deben estar presentes)
                 if request.tags:
-                    req_tags = [t.lower() for t in request.tags]
-                    algo_tags = [t.lower() for t in (algo.tags or [])]
-                    for t in req_tags:
-                        if t not in algo_tags:
-                            return False
+                    # Usar $in para que coincida si tiene alguno de los tags
+                    filter_dict["tags"] = {"$in": request.tags}
 
-                # complexity_class
                 if request.complexity_class:
-                    req_cc = getattr(request, 'complexity_class')
-                    if hasattr(req_cc, 'value'):
-                        if (algo.complexity_class or '') != req_cc.value:
-                            return False
-                    else:
-                        if (algo.complexity_class or '') != str(req_cc):
-                            return False
+                    filter_dict["complexity_class"] = request.complexity_class.value
 
-                # analyzed_only
-                if getattr(request, 'analyzed_only', False):
-                    if not getattr(algo, 'analyzed', False):
-                        return False
+                if request.analyzed_only:
+                    filter_dict["analyzed"] = True
 
-                # free text query
+                # Filtros de fecha
+                if request.min_date or request.max_date:
+                    date_filter = {}
+                    if request.min_date:
+                        date_filter["$gte"] = request.min_date
+                    if request.max_date:
+                        date_filter["$lte"] = request.max_date
+                    filter_dict["created_at"] = date_filter
+
+                # Búsqueda de texto libre (si existe)
                 if request.query:
-                    q = request.query.lower()
-                    if q not in (algo.name or '').lower() and q not in (algo.description or '').lower():
-                        # también buscar en tags
-                        if not any(q in t.lower() for t in (algo.tags or [])):
-                            return False
+                    # MongoDB text search (requiere índice de texto)
+                    # Alternativa: usar regex
+                    filter_dict["$or"] = [
+                        {"name": {"$regex": request.query, "$options": "i"}},
+                        {"description": {"$regex": request.query, "$options": "i"}}
+                    ]
 
-                # date filters
-                if getattr(request, 'min_date', None):
-                    if algo.created_at < request.min_date:
-                        return False
-                if getattr(request, 'max_date', None):
-                    if algo.created_at > request.max_date:
-                        return False
+                logger.debug(f"Filtro MongoDB: {filter_dict}")
 
-                return True
+                # Calcular skip para paginación
+                skip = (page - 1) * page_size
 
-            filtered = [a for a in all_algos if matches(a)]
-
-            # Convertir a AlgorithmMetadata
-            metadata_list = [
-                AlgorithmMetadata(
-                    id=a.id,
-                    name=a.name,
-                    category=a.category,
-                    tags=a.tags or [],
-                    complexity_class=a.complexity_class,
-                    big_o=a.big_o,
-                    created_at=a.created_at,
-                    analyzed=bool(a.analyzed),
+                # Buscar en MongoDB con paginación
+                algorithms_models = await self.repository.find(
+                    filter_dict,
+                    skip=skip,
+                    limit=page_size
                 )
-                for a in filtered
-            ]
 
-            total = len(metadata_list)
+                # Contar total de documentos que coinciden
+                total = await self.repository.count(filter_dict)
 
-            # Paginación: usar atributos opcionales 'limit' y 'offset' si vienen en el request
-            page_size = max(getattr(request, 'limit', None) or 10, 1)
-            offset = max(getattr(request, 'offset', None) or 0, 0)
-            page = max(offset // page_size + 1, 1)
-            total_pages = max((total + page_size - 1) // page_size, 1)
+                logger.info(f"Encontrados {total} algoritmos en MongoDB, mostrando {len(algorithms_models)}")
 
-            # Slice
-            start = offset
-            end = offset + page_size
-            paged = metadata_list[start:end]
+                # Convertir modelos a metadata
+                metadata_list = []
+                for model in algorithms_models:
+                    try:
+                        # Protección contra tipos inesperados
+                        if isinstance(model, tuple):
+                            logger.warning(f"Modelo es tupla, intentando extraer primer elemento")
+                            model = model[0] if len(model) > 0 else None
+                            if model is None:
+                                continue
+                        
+                        # Obtener id de manera segura (puede ser PydanticObjectId o str)
+                        model_id = str(getattr(model, 'id', None) or getattr(model, '_id', ''))
+                        
+                        metadata = AlgorithmMetadata(
+                            id=model_id,
+                            name=getattr(model, 'name', 'Unknown'),
+                            category=AlgorithmCategory(model.category) if getattr(model, 'category', None) else AlgorithmCategory.OTHER,
+                            tags=getattr(model, 'tags', None) or [],
+                            complexity_class=AlgorithmComplexityClass(model.complexity_class) if getattr(model, 'complexity_class', None) else None,
+                            big_o=getattr(model, 'big_o', None),
+                            created_at=getattr(model, 'created_at', datetime.utcnow()),
+                            analyzed=getattr(model, 'analyzed', False),
+                        )
+                        metadata_list.append(metadata)
+                    except Exception as e:
+                        logger.error(f"Error convirtiendo modelo: {e}")
+                        continue
+                    
+                # Calcular páginas totales
+                total_pages = max((total + page_size - 1) // page_size, 1) if total > 0 else 1
 
-            return AlgorithmListResponse(
-                success=True,
-                message="Búsqueda completada exitosamente",
-                timestamp=None,
-                algorithms=paged,
-                total=total,
-                page=page,
-                page_size=page_size,
-                total_pages=total_pages,
+                return AlgorithmListResponse(
+                    success=True,
+                    message="Búsqueda completada exitosamente",
+                    algorithms=metadata_list,
+                    total=total,
+                    page=page,
+                    page_size=page_size,
+                    total_pages=total_pages,
+                )
+
+            except Exception as e:
+                logger.error(f"Error en búsqueda MongoDB: {e}", exc_info=True)
+                # Continuar con fallback a memoria
+
+        # ========== FALLBACK: BÚSQUEDA EN MEMORIA ==========
+        logger.warning("Usando búsqueda en memoria (fallback)")
+
+        all_algos = list(self._algorithms.values())
+
+        # Aplicar filtros en memoria
+        def matches(algo: Algorithm) -> bool:
+            # category
+            if request.category:
+                if algo.category != request.category:
+                    return False
+
+            # tags (si tiene ALGUNO de los tags solicitados)
+            if request.tags:
+                algo_tags_lower = [t.lower() for t in (algo.tags or [])]
+                req_tags_lower = [t.lower() for t in request.tags]
+                if not any(t in algo_tags_lower for t in req_tags_lower):
+                    return False
+
+            # complexity_class
+            if request.complexity_class:
+                if algo.complexity_class != request.complexity_class:
+                    return False
+
+            # analyzed_only
+            if request.analyzed_only:
+                if not getattr(algo, 'analyzed', False):
+                    return False
+
+            # free text query
+            if request.query:
+                q = request.query.lower()
+                if q not in (algo.name or '').lower() and q not in (algo.description or '').lower():
+                    # también buscar en tags
+                    if not any(q in t.lower() for t in (algo.tags or [])):
+                        return False
+
+            # date filters
+            if request.min_date:
+                if algo.created_at < request.min_date:
+                    return False
+            if request.max_date:
+                if algo.created_at > request.max_date:
+                    return False
+
+            return True
+
+        filtered = [a for a in all_algos if matches(a)]
+
+        # Convertir a AlgorithmMetadata
+        metadata_list = [
+            AlgorithmMetadata(
+                id=a.id,
+                name=a.name,
+                category=a.category,
+                tags=a.tags or [],
+                complexity_class=a.complexity_class,
+                big_o=a.big_o,
+                created_at=a.created_at,
+                analyzed=bool(a.analyzed),
             )
+            for a in filtered
+        ]
 
-        except Exception as e:
-            logger.error(f"Error en búsqueda: {e}")
-            raise
+        total = len(metadata_list)
+
+        # Paginación
+        skip = (page - 1) * page_size
+        paged = metadata_list[skip:skip + page_size]
+
+        total_pages = max((total + page_size - 1) // page_size, 1) if total > 0 else 1
+
+        return AlgorithmListResponse(
+            success=True,
+            message="Búsqueda completada exitosamente",
+            algorithms=paged,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
 
     # Helper Methods
     def _validate_code_size(self, code: str) -> None:

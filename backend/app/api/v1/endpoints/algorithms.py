@@ -140,17 +140,14 @@ async def list_algorithms(
     """Lista algoritmos con filtros y paginación"""
     from app.schemas.algorithm import AlgorithmCategory
     
-    # Construir criterios de búsqueda
+    # Construir criterios de búsqueda SIN limit/offset
     criteria = AlgorithmSearchCriteria(
         category=AlgorithmCategory(category) if category else None,
         tags=tags,
     )
     
-    # Agregar paginación manualmente
-    criteria.limit = page_size
-    criteria.offset = (page - 1) * page_size
-    
-    return await service.search(criteria)
+    # Pasar paginación por separado al service
+    return await service.search(criteria, page=page, page_size=page_size)
 
 @router.post(
     "/search",

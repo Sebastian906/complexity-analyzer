@@ -387,34 +387,40 @@ class DiagramRenderer:
     def _render_graph_graphviz(self, graph: GraphResult, output_path: Optional[Path]) -> RenderResult:
         """Renderiza grafo usando Graphviz"""
         if not GRAPHVIZ_AVAILABLE:
-            raise ImportError("Graphviz no está disponible")
+            # Fallback a formato DOT textual si graphviz no está instalado
+            logger.warning("Graphviz no está disponible, usando fallback a DOT textual")
+            return self._render_graph_dot(graph, output_path)
         
-        # Crear grafo
-        if graph.graph_type.value in ["directed", "tree", "dag"]:
-            dot = graphviz.Digraph(engine=self.options.engine, format=self.options.format.value)
-        else:
-            dot = graphviz.Graph(engine=self.options.engine, format=self.options.format.value)
-        
-        # Nodos
-        for node in graph.nodes:
-            dot.node(node.id, node.label)
-        
-        # Aristas
-        for edge in graph.edges:
-            dot.edge(edge.source, edge.target, label=edge.label or "")
-        
-        # Renderizar
-        if output_path:
-            dot.render(str(output_path.with_suffix('')), cleanup=True)
-            content = output_path.read_bytes()
-        else:
-            content = dot.pipe()
-        
-        return RenderResult(
-            content=content,
-            format=self.options.format,
-            file_path=output_path
-        )
+        try:
+            # Crear grafo
+            if graph.graph_type.value in ["directed", "tree", "dag"]:
+                dot = graphviz.Digraph(engine=self.options.engine, format=self.options.format.value)
+            else:
+                dot = graphviz.Graph(engine=self.options.engine, format=self.options.format.value)
+            
+            # Nodos
+            for node in graph.nodes:
+                dot.node(node.id, node.label)
+            
+            # Aristas
+            for edge in graph.edges:
+                dot.edge(edge.source, edge.target, label=edge.label or "")
+            
+            # Renderizar
+            if output_path:
+                dot.render(str(output_path.with_suffix('')), cleanup=True)
+                content = output_path.read_bytes()
+            else:
+                content = dot.pipe()
+            
+            return RenderResult(
+                content=content,
+                format=self.options.format,
+                file_path=output_path
+            )
+        except Exception as e:
+            logger.error(f"Error en graphviz, usando fallback a DOT: {e}")
+            return self._render_graph_dot(graph, output_path)
     
     # Métodos de renderizado para flujos
     
