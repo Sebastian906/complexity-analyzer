@@ -5,12 +5,13 @@ Proporciona caché en memoria para optimizar análisis repetidos.
 Preparado para integrar Redis en el futuro (Módulo 6).
 """
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any
 
 from app.core.config import settings
 from app.utils.logger import setup_logger
@@ -247,6 +248,84 @@ class CacheService:
         """Verifica si una clave existe y no está expirada"""
         value = await self.get(key)
         return value is not None
+
+    async def get_many(self, keys: List[str]) -> Dict[str, Any]:
+        """
+        Obtiene múltiples valores del caché en paralelo.
+
+        Args:
+            keys: Lista de claves
+
+        Returns:
+            Dict con {key: value} solo para claves existentes
+        """
+        results = {}
+
+        # Ejecutar gets en paralelo
+        async def get_single(key):
+            value = await self.get(key)
+            return key, value
+
+        tasks = [get_single(key) for key in keys]
+        key_value_pairs = await asyncio.gather(*tasks)
+
+        # Filtrar None
+        for key, value in key_value_pairs:
+            if value is not None:
+                results[key] = value
+
+        logger.debug(f"Cache GET_MANY: {len(results)}/{len(keys)} hits")
+        return results
+
+    async def set_many(
+        self,
+        items: Dict[str, Any],
+        ttl: Optional[int] = None,
+        cache_type: Optional[str] = None
+    ) -> int:
+        """
+        Almacena múltiples valores en caché en paralelo.
+
+        Args:
+            items: Dict {key: value}
+            ttl: Time to live (opcional)
+            cache_type: Tipo de caché (opcional)
+
+        Returns:
+            int: Número de items almacenados exitosamente
+        """
+        async def set_single(key, value):
+            return await self.set(key, value, ttl=ttl, cache_type=cache_type)
+
+        tasks = [set_single(k, v) for k, v in items.items()]
+        results = await asyncio.gather(*tasks)
+
+        success_count = sum(1 for r in results if r)
+        logger.debug(f"Cache SET_MANY: {success_count}/{len(items)} successful")
+
+        return success_count
+
+    async def delete_many(self, keys: List[str]) -> int:
+        """
+        Elimina múltiples claves en paralelo.
+        
+        Args:
+            keys: Lista de claves
+            
+        Returns:
+            int: Número de claves eliminadas
+        """
+        async def delete_single(key):
+            return await self.delete(key)
+
+        tasks = [delete_single(key) for key in keys]
+        results = await asyncio.gather(*tasks)
+
+        deleted_count = sum(1 for r in results if r)
+        logger.debug(f"Cache DELETE_MANY: {deleted_count}/{len(keys)} deleted")
+
+        return deleted_count
+
 
 # Singleton
 _cache_service: Optional[CacheService] = None

@@ -40,6 +40,9 @@ from app.infrastructure.export.mermaid_exporter import MermaidExporter, export_t
 from app.infrastructure.export.svg_exporter import SVGExporter, export_to_svg
 from app.infrastructure.export.html_exporter import HTMLExporter, export_to_html
 from app.infrastructure.export.txt_exporter import TXTExporter, export_to_txt
+from app.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # PDF y Excel son opcionales (requieren librerías externas)
 try:
@@ -238,13 +241,19 @@ def export_to_multiple_formats(
                 print(f"{format}: ✗ {result.errors}")
     """
     from pathlib import Path
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     if formats is None:
         formats = ExporterFactory.get_available_formats()
     
     results = {}
     
-    for export_format in formats:
+    # PARALELIZACIÓN: Usar ThreadPoolExecutor para operaciones I/O
+    # Las exportaciones son principalmente I/O-bound (escribir archivos)
+    max_workers = min(len(formats), 5)  # Máximo 5 workers concurrentes
+    
+    def export_single_format(export_format):
+        """Exporta un solo formato (ejecutado en thread)"""
         try:
             # Determinar ruta de salida
             output_path = None
@@ -262,15 +271,44 @@ def export_to_multiple_formats(
                 output_path=str(output_path) if output_path else None
             )
             
-            results[export_format] = result
+            return export_format, result
             
         except Exception as e:
             # En caso de error, crear resultado con error
-            results[export_format] = ExportResult(
+            return export_format, ExportResult(
                 success=False,
                 format=export_format,
                 errors=[str(e)]
             )
+    
+    # Ejecutar exports en paralelo
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Enviar todas las tareas
+        futures = {
+            executor.submit(export_single_format, fmt): fmt 
+            for fmt in formats
+        }
+        
+        # Recolectar resultados conforme se completan
+        for future in as_completed(futures):
+            try:
+                export_format, result = future.result()
+                results[export_format] = result
+                
+                # Log progreso
+                if result.success:
+                    logger.info(f"✓ Exportación {export_format.value} completada")
+                else:
+                    logger.warning(f"✗ Exportación {export_format.value} falló")
+            except Exception as e:
+                # Manejar excepciones no capturadas
+                export_format = futures[future]
+                logger.error(f"Error crítico en {export_format}: {e}")
+                results[export_format] = ExportResult(
+                    success=False,
+                    format=export_format,
+                    errors=[f"Error crítico: {str(e)}"]
+                )
     
     return results
 

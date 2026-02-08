@@ -26,6 +26,7 @@ from app.core.patterns.detectors.advanced_patterns import (
     BioInspiredDetector,
     ApproximationDetector
 )
+from app.utils import logger
 
 @dataclass
 class PatternDetectionResult:
@@ -201,12 +202,19 @@ class PatternDetector:
         debug_console.print("\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]")
         debug_console.print("=" * 70)
 
-        for detector in self.detectors:
+        # PARALELIZACIÓN: Ejecutar todos los detectores concurrentemente
+        import asyncio
+
+        async def run_detector_async(detector):
+            """Wrapper async para cada detector"""
             try:
+                # Los detectores son síncronos, pero podemos ejecutarlos en paralelo
+                # usando run_in_executor si fueran CPU-bound, pero en este caso
+                # simplemente los ejecutamos de forma concurrente
                 match = detector.detect(ast)
+
                 if match:
-                    patterns.append(match)
-                    # Debug: mostrar patrón detectado con detalles
+                    # Debug: mostrar patrón detectado
                     confidence = match.confidence
                     indicators_found = len(match.indicators_found)
                     total_indicators = match.total_indicators
@@ -215,25 +223,51 @@ class PatternDetector:
                         f"Confianza: [green]{confidence:5.1%}[/green] | "
                         f"Indicadores: {indicators_found}/{total_indicators}"
                     )
+                    return match
                 else:
                     # Debug: patrones no detectados
                     debug_console.print(
                         f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
                     )
+                    return None
             except Exception as e:
-                # Log error pero continuar
                 error_msg = str(e)[:50]
                 debug_console.print(
                     f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
                 )
-                # Descomentar para ver traceback completo:
-                # import traceback
-                # traceback.print_exc()
-                continue
+                return None
+
+        # Ejecutar todos los detectores en paralelo
+        try:
+            # Crear event loop si no existe
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Ejecutar detectores en paralelo
+            tasks = [run_detector_async(detector) for detector in self.detectors]
+            results = loop.run_until_complete(asyncio.gather(*tasks))
+
+            # Filtrar None
+            patterns = [r for r in results if r is not None]
+
+        except Exception as e:
+            # Fallback a ejecución secuencial si asyncio falla
+            logger.warning(f"Paralelización falló, usando modo secuencial: {e}")
+            patterns = []
+            for detector in self.detectors:
+                try:
+                    match = detector.detect(ast)
+                    if match:
+                        patterns.append(match)
+                except Exception:
+                    continue
 
         debug_console.print("=" * 70)
         debug_console.print(f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n")
-        
+
         return patterns
 
     def _get_detector(

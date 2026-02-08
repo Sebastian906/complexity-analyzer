@@ -153,36 +153,48 @@ class BatchExporter:
         progress_callback: Optional[Callable]
     ) -> List[ExportResult]:
         """Exportación con ThreadPoolExecutor"""
+        from concurrent.futures import as_completed  # AGREGAR IMPORT
+
         results = []
         completed = 0
         
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-            # Dividir en chunks
-            chunks = [tasks[i:i + self.config.chunk_size] 
-                     for i in range(0, len(tasks), self.config.chunk_size)]
-            
-            for chunk in chunks:
-                futures = [
-                    executor.submit(self._process_task_sync, task)
-                    for task in chunk
-                ]
-                
-                for future in futures:
-                    try:
-                        result = future.result(timeout=self.config.timeout_per_task)
-                        results.append(result)
-                        completed += 1
-                        
-                        if progress_callback:
-                            progress_callback(completed, len(tasks))
-                    except Exception as e:
-                        logger.error(f"Error en tarea: {e}")
-                        results.append(ExportResult(
-                            task_id="unknown",
-                            success=False,
-                            error=str(e)
-                        ))
-        
+            # Procesar con as_completed
+            futures = {
+                executor.submit(self._process_task_sync, task): task
+                for task in tasks
+            }
+
+            # MEJORA: Usar as_completed en vez de iterar futures directamente
+            for future in as_completed(futures, timeout=self.config.timeout_per_task):
+                try:
+                    result = future.result()
+                    results.append(result)
+                    completed += 1
+
+                    if progress_callback:
+                        progress_callback(completed, len(tasks))
+
+                except TimeoutError:
+                    task = futures[future]
+                    logger.error(f"Timeout en tarea {task.id}")
+                    results.append(ExportResult(
+                        task_id=task.id,
+                        success=False,
+                        error="Timeout exceeded"
+                    ))
+                    completed += 1
+
+                except Exception as e:
+                    task = futures[future]
+                    logger.error(f"Error en tarea {task.id}: {e}")
+                    results.append(ExportResult(
+                        task_id=task.id,
+                        success=False,
+                        error=str(e)
+                    ))
+                    completed += 1
+
         return results
     
     async def _export_async(
@@ -266,9 +278,10 @@ class BatchExporter:
                 )
             elif task.visualization_type == 'graph':
                 diagram = self.graph_generator.generate_graph(
-                    task.data.get('nodes', []),
-                    task.data.get('edges', []),
-                    task.options or {}
+                    num_nodes=task.data.get('num_nodes', 6),
+                    edges_list=task.data.get('edges_list'),
+                    directed=task.data.get('directed', True),
+                    layout=task.data.get('layout', None)
                 )
             else:
                 raise ValueError(f"Tipo desconocido: {task.visualization_type}")
