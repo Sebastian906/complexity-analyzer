@@ -26,6 +26,9 @@ from app.infrastructure.database import get_mongodb_client
 # Inicializa la conexión a MongoDB y Beanie antes de los tests
 @pytest.fixture(scope="session", autouse=True)
 async def init_mongodb():
+    """
+    Inicializa la conexión de MongoDB y Beanie para todas las pruebas.
+    """
     # Usar el cliente singleton para que todos los tests compartan la misma conexión
     mongodb_client = get_mongodb_client()
     await mongodb_client.connect()

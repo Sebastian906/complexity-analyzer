@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
@@ -23,11 +24,18 @@ class MongoDBClient:
         """Conectar a MongoDB"""
         try:
             logger.info(f"Conectando a MongoDB: {settings.MONGODB_URL}")
-            
+
+            # Obtener el event loop actual y pasarlo explícitamente a Motor
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
+
             self.client = AsyncIOMotorClient(
                 settings.MONGODB_URL,
                 minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
                 maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
+                io_loop=loop,
             )
 
             self.db = self.client[settings.MONGODB_DB_NAME]
