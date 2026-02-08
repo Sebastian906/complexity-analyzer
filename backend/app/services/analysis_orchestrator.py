@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
+import asyncio
 
 from app.core.parser import PseudocodeParser, ProgramNode
 from app.core.analyzer import AnalyzerEngine
@@ -177,75 +178,102 @@ class AnalysisOrchestrator:
                     ast, algorithm_info = await self._parse_code(request, errors)
             else:
                 ast, algorithm_info = await self._parse_code(request, errors)
-            # ========================================
 
-            # PASO 2: ANÁLISIS DE COMPLEJIDAD
-            if request.analyze_complexity and ast:
-                logger.info("Paso 2: Análisis de complejidad")
-                
-                # ========== PROFILING: Análisis ==========
-                if self.profiling_enabled and self.monitor:
-                    with self.monitor.monitor("complexity_analysis", module="analyzer"):
-                        complexity_result = await self._analyze_complexity(
-                            ast, request, errors, warnings
-                        )
-                else:
-                    complexity_result = await self._analyze_complexity(
-                        ast, request, errors, warnings
-                    )
-                # =========================================
+            # Si parsing falla, retornar early
+            if not ast:
+                return self._create_result(
+                    started_at=started_at,
+                    start_time=start_time,
+                    algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                    algorithm_info=algorithm_info,
+                    errors=errors,
+                    warnings=warnings,
+                )
 
-            # PASO 3: DETECCIÓN DE PATRONES
-            if request.analyze_patterns and ast:
-                logger.info("Paso 3: Detección de patrones")
-                
-                # ========== PROFILING: Patrones ==========
-                if self.profiling_enabled and self.monitor:
-                    with self.monitor.monitor("pattern_detection", module="patterns"):
-                        patterns_result = await self._detect_patterns_safe(
-                            ast, request, warnings
-                        )
-                else:
-                    patterns_result = await self._detect_patterns_safe(
-                        ast, request, warnings
-                    )
-                # =========================================
+            # ========== PASOS 2-4: ANÁLISIS PARALELO ==========
+            # Estos pasos son independientes y pueden ejecutarse concurrentemente
+            logger.info("Ejecutando análisis paralelo: complejidad, patrones, estructuras")
 
-            # PASO 4: DETECCIÓN DE ESTRUCTURAS
-            if request.analyze_structures and ast:
-                logger.info("Paso 4: Detección de estructuras")
-                
-                # ========== PROFILING: Estructuras ==========
-                if self.profiling_enabled and self.monitor:
-                    with self.monitor.monitor("structure_detection", module="structures"):
-                        structures_result = await self._detect_structures_safe(
-                            ast, request, warnings
-                        )
-                else:
-                    structures_result = await self._detect_structures_safe(
-                        ast, request, warnings
-                    )
-                # ===========================================
+            # Crear tareas para cada análisis
+            tasks = []
+            task_names = []
 
-            # PASO 5: GENERACIÓN DE VISUALIZACIONES
+            # Tarea 1: Análisis de complejidad
+            if request.analyze_complexity:
+                async def analyze_complexity_task():
+                    if self.profiling_enabled and self.monitor:
+                        with self.monitor.monitor("complexity_analysis", module="analyzer"):
+                            return await self._analyze_complexity(ast, request, errors, warnings)
+                    else:
+                        return await self._analyze_complexity(ast, request, errors, warnings)
+
+                tasks.append(analyze_complexity_task())
+                task_names.append("complexity")
+            else:
+                tasks.append(self._return_none())
+                task_names.append("complexity")
+
+            # Tarea 2: Detección de patrones
+            if request.analyze_patterns:
+                async def detect_patterns_task():
+                    if self.profiling_enabled and self.monitor:
+                        with self.monitor.monitor("pattern_detection", module="patterns"):
+                            return await self._detect_patterns_safe(ast, request, warnings)
+                    else:
+                        return await self._detect_patterns_safe(ast, request, warnings)
+
+                tasks.append(detect_patterns_task())
+                task_names.append("patterns")
+            else:
+                tasks.append(self._return_none())
+                task_names.append("patterns")
+
+            # Tarea 3: Detección de estructuras
+            if request.analyze_structures:
+                async def detect_structures_task():
+                    if self.profiling_enabled and self.monitor:
+                        with self.monitor.monitor("structure_detection", module="structures"):
+                            return await self._detect_structures_safe(ast, request, warnings)
+                    else:
+                        return await self._detect_structures_safe(ast, request, warnings)
+
+                tasks.append(detect_structures_task())
+                task_names.append("structures")
+            else:
+                tasks.append(self._return_none())
+                task_names.append("structures")
+
+            # EJECUTAR EN PARALELO
+            parallel_start = time.time()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            parallel_time = time.time() - parallel_start
+
+            logger.info(f"Análisis paralelo completado en {parallel_time:.3f}s")
+
+            # Extraer resultados
+            complexity_result = results[0] if not isinstance(results[0], Exception) else None
+            patterns_result = results[1] if not isinstance(results[1], Exception) else None
+            structures_result = results[2] if not isinstance(results[2], Exception) else None
+
+            # Log errores si los hubo
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"Error en {task_names[i]}: {result}")
+                    warnings.append(f"{task_names[i]} falló: {str(result)}")
+
+            # ========== PASO 5: VISUALIZACIONES (OPCIONAL) ==========
             if request.generate_visualizations and ast:
                 logger.info("Paso 5: Generación de visualizaciones")
-                
-                # ========== PROFILING: Visualizaciones ==========
+
                 if self.profiling_enabled and self.monitor:
                     with self.monitor.monitor("generate_visualizations", module="visualization"):
                         visualizations = await self._generate_visualizations(
-                            ast,
-                            request,
-                            complexity_result
+                            ast, request, complexity_result
                         )
                 else:
                     visualizations = await self._generate_visualizations(
-                        ast,
-                        request,
-                        complexity_result
+                        ast, request, complexity_result
                     )
-                # ===============================================
 
             # CONSTRUIR RESULTADO FINAL
             return self._create_result(
@@ -288,6 +316,10 @@ class AnalysisOrchestrator:
                 errors=errors,
                 warnings=warnings,
             )
+        
+    async def _return_none(self):
+        """Helper para retornar None de forma async"""
+        return None
 
     # Helper Methods - Extracción de Información
     async def _parse_code(
