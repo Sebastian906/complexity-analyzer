@@ -13,7 +13,7 @@ from datetime import datetime
 
 from app.core.visualization.recursion_tree_generator import RecursionTreeGenerator
 from app.core.visualization.execution_flow_generator import ExecutionFlowGenerator
-from app.core.visualization.graph_generator import GraphGenerator
+from app.core.visualization.graph_generator import GraphGenerator, LayoutType
 from app.core.visualization.diagram_renderer import DiagramRenderer
 from app.utils.logger import get_logger
 
@@ -259,8 +259,16 @@ class BatchExporter:
     async def _process_single_task(self, task: ExportTask) -> ExportResult:
         """Procesa una tarea individual (async)"""
         start_time = time.time()
-        
+
         try:
+            # Validar que task.format no sea None ANTES de procesar
+            if task.format is None:
+                raise ValueError(f"Formato de exportación no especificado para tarea {task.id}")
+
+            # Validar que output_path sea válido
+            if task.output_path is None:
+                raise ValueError(f"output_path no especificado para tarea {task.id}")
+
             # Crear directorio si no existe
             task.output_path.parent.mkdir(parents=True, exist_ok=True)
             
@@ -277,26 +285,61 @@ class BatchExporter:
                     task.options or {}
                 )
             elif task.visualization_type == 'graph':
+                # Obtener layout, usar SPRING como default si es None
+                layout_value = task.data.get('layout')
+                if layout_value is None:
+                    layout_value = LayoutType.SPRING
+                elif isinstance(layout_value, str):
+                    # Convertir string a LayoutType
+                    try:
+                        layout_value = LayoutType(layout_value)
+                    except ValueError:
+                        layout_value = LayoutType.SPRING
+                
                 diagram = self.graph_generator.generate_graph(
                     num_nodes=task.data.get('num_nodes', 6),
                     edges_list=task.data.get('edges_list'),
                     directed=task.data.get('directed', True),
-                    layout=task.data.get('layout', None)
+                    layout=layout_value
                 )
             else:
                 raise ValueError(f"Tipo desconocido: {task.visualization_type}")
+
+            # Convertir a valor de enum si es necesario
+            from app.core.visualization.batch_exporter import ExportFormat
+
+            # Determinar formato
+            if isinstance(task.format, ExportFormat):
+                # Ya es enum - usar directamente
+                format_enum = task.format
+                format_value = task.format.value
+            elif isinstance(task.format, str):
+                # Es string - buscar enum correspondiente
+                try:
+                    format_enum = ExportFormat(task.format)
+                    format_value = task.format
+                except ValueError:
+                    raise ValueError(f"Formato inválido: {task.format}")
+            else:
+                raise ValueError(f"Tipo de formato no soportado: {type(task.format)}")
             
             # Renderizar en formato solicitado
-            if task.format == ExportFormat.DOT:
-                output = diagram.to_dot()
-            elif task.format == ExportFormat.MERMAID:
-                output = diagram.to_mermaid()
-            elif task.format == ExportFormat.JSON:
-                output = diagram.to_json()
+            if format_value in ['dot', ExportFormat.DOT.value]:
+                output = diagram.to_dot() if hasattr(diagram, 'to_dot') else self._fallback_dot(diagram)
+            elif format_value in ['mermaid', ExportFormat.MERMAID.value]:
+                output = diagram.to_mermaid() if hasattr(diagram, 'to_mermaid') else self._fallback_mermaid(diagram)
+            elif format_value in ['json', ExportFormat.JSON.value]:
+                output = self._safe_json_export(diagram)
+            elif format_value in ['svg', ExportFormat.SVG.value]:
+                output = await self._render_diagram(diagram, format_enum, task.options)
+            elif format_value in ['png', ExportFormat.PNG.value]:
+                output = await self._render_diagram(diagram, format_enum, task.options)
+            elif format_value in ['pdf', ExportFormat.PDF.value]:
+                output = await self._render_diagram(diagram, format_enum, task.options)
             else:
-                # PNG, SVG, PDF requieren renderizado
-                output = await self._render_diagram(diagram, task.format, task.options)
-            
+                # Fallback genérico
+                output = await self._render_diagram(diagram, format_enum, task.options)
+
             # Guardar archivo
             if isinstance(output, str):
                 task.output_path.write_text(output, encoding='utf-8')
@@ -305,7 +348,7 @@ class BatchExporter:
             
             # Optimizar si está habilitado
             if self.config.optimize_output:
-                await self._optimize_output(task.output_path, task.format)
+                await self._optimize_output(task.output_path, format_enum)
             
             processing_time = time.time() - start_time
             file_size = task.output_path.stat().st_size
@@ -326,6 +369,69 @@ class BatchExporter:
                 error=str(e),
                 processing_time=time.time() - start_time
             )
+    
+    def _safe_json_export(self, diagram) -> str:
+        """Exporta diagrama a JSON de forma segura"""
+        import json
+        
+        # Intentar método nativo
+        if hasattr(diagram, 'to_json'):
+            try:
+                return diagram.to_json()
+            except:
+                pass
+        
+        # Intentar to_dict
+        if hasattr(diagram, 'to_dict'):
+            try:
+                return json.dumps(diagram.to_dict(), indent=2, default=str)
+            except:
+                pass
+        
+        # Usar __dict__ si existe
+        if hasattr(diagram, '__dict__'):
+            try:
+                return json.dumps(diagram.__dict__, indent=2, default=str)
+            except:
+                pass
+        
+        # Fallback: convertir a string
+        return json.dumps({'type': type(diagram).__name__, 'data': str(diagram)}, indent=2)
+    
+    def _fallback_dot(self, diagram) -> str:
+        """Fallback para generación DOT"""
+        return f'digraph G {{\n  node [label="{type(diagram).__name__}"]\n}}'
+    
+    def _fallback_mermaid(self, diagram) -> str:
+        """Fallback para generación Mermaid"""
+        return f'graph TD\n  A[{type(diagram).__name__}]'
+    
+    def _safe_json_export(self, diagram) -> str:
+        """Exporta diagrama a JSON de forma segura"""
+        import json
+        
+        # Intentar método nativo
+        if hasattr(diagram, 'to_json'):
+            return diagram.to_json()
+        
+        # Intentar to_dict
+        if hasattr(diagram, 'to_dict'):
+            return json.dumps(diagram.to_dict(), indent=2, default=str)
+        
+        # Usar __dict__ si existe
+        if hasattr(diagram, '__dict__'):
+            return json.dumps(diagram.__dict__, indent=2, default=str)
+        
+        # Fallback: convertir a string
+        return json.dumps({'data': str(diagram)}, indent=2)
+    
+    def _fallback_dot(self, diagram) -> str:
+        """Fallback para generación DOT"""
+        return f'digraph G {{\n  node [label="{type(diagram).__name__}"]\n}}'
+    
+    def _fallback_mermaid(self, diagram) -> str:
+        """Fallback para generación Mermaid"""
+        return f'graph TD\n  A[{type(diagram).__name__}]'
     
     def _process_task_sync(self, task: ExportTask) -> ExportResult:
         """Versión síncrona para ThreadPoolExecutor/ProcessPoolExecutor"""

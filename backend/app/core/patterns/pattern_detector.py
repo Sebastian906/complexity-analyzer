@@ -204,13 +204,10 @@ class PatternDetector:
 
         # PARALELIZACIÓN: Ejecutar todos los detectores concurrentemente
         import asyncio
-
+        
         async def run_detector_async(detector):
             """Wrapper async para cada detector"""
             try:
-                # Los detectores son síncronos, pero podemos ejecutarlos en paralelo
-                # usando run_in_executor si fueran CPU-bound, pero en este caso
-                # simplemente los ejecutamos de forma concurrente
                 match = detector.detect(ast)
 
                 if match:
@@ -235,27 +232,67 @@ class PatternDetector:
                 debug_console.print(
                     f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
                 )
+                logger.error(f"Error en detector {detector.pattern_name}: {e}")
                 return None
 
         # Ejecutar todos los detectores en paralelo
         try:
-            # Crear event loop si no existe
+            # Verificar si ya hay un event loop corriendo
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+                # Si llegamos aquí, ya hay un loop corriendo (en tests)
+                # Ejecutar de forma secuencial en este caso
+                import asyncio
+                results = []
+                for detector in self.detectors:
+                    # Crear una nueva tarea en el loop existente
+                    task = run_detector_async(detector)
+                    result = asyncio.create_task(task) if hasattr(asyncio, 'create_task') else task
+                    # Como estamos en sync, necesitamos await manual
+                    # Pero no podemos hacer await aquí, así que fallback a sync
+                    try:
+                        match = detector.detect(ast)
+                        if match:
+                            confidence = match.confidence
+                            indicators_found = len(match.indicators_found)
+                            total_indicators = match.total_indicators
+                            debug_console.print(
+                                f"[green]✓[/green] {detector.pattern_name:30s} | "
+                                f"Confianza: [green]{confidence:5.1%}[/green] | "
+                                f"Indicadores: {indicators_found}/{total_indicators}"
+                            )
+                            results.append(match)
+                        else:
+                            debug_console.print(
+                                f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
+                            )
+                    except Exception as e:
+                        error_msg = str(e)[:50]
+                        debug_console.print(
+                            f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
+                        )
+                        logger.error(f"Error en detector {detector.pattern_name}: {e}")
+
+                patterns = results
+
             except RuntimeError:
+                # No hay loop corriendo, crear uno nuevo
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-            # Ejecutar detectores en paralelo
-            tasks = [run_detector_async(detector) for detector in self.detectors]
-            results = loop.run_until_complete(asyncio.gather(*tasks))
+                try:
+                    # Ejecutar detectores en paralelo
+                    tasks = [run_detector_async(detector) for detector in self.detectors]
+                    results = loop.run_until_complete(asyncio.gather(*tasks))
 
-            # Filtrar None
-            patterns = [r for r in results if r is not None]
+                    # Filtrar None
+                    patterns = [r for r in results if r is not None]
+                finally:
+                    loop.close()
 
         except Exception as e:
-            # Fallback a ejecución secuencial si asyncio falla
-            logger.warning(f"Paralelización falló, usando modo secuencial: {e}")
+            # Fallback a ejecución secuencial si falla
+            logger.warn(f"Paralelización falló, usando modo secuencial: {e}")
             patterns = []
             for detector in self.detectors:
                 try:

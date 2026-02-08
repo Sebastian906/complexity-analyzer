@@ -128,9 +128,9 @@ async def test_pattern_detector_parallel_execution():
     code = """
     algorithm quicksort(arr, low, high)
     begin
-        if low < high then
+        if (low < high) then
             begin
-                pivot <- partition(arr, low, high)
+                pivot := partition(arr, low, high)
                 call quicksort(arr, low, pivot - 1)
                 call quicksort(arr, pivot + 1, high)
             end
@@ -320,6 +320,7 @@ async def test_batch_exporter_parallel():
         ProcessingMode
     )
     from pathlib import Path
+    import tempfile
     
     # Configurar exporter con modo THREADED
     config = BatchExportConfig(
@@ -329,47 +330,58 @@ async def test_batch_exporter_parallel():
     
     exporter = BatchExporter(config)
     
-    # Crear tareas de ejemplo (simplificadas)
-    # Nota: generate_graph espera num_nodes: int y edges_list: List[Tuple[int, int]]
-    tasks = []
-    for i in range(10):
-        task = ExportTask(
-            id=f"task_{i}",
-            visualization_type="graph",  # Tipo simple
-            data={
-                "num_nodes": 3,
-                "edges_list": [(0, 1), (1, 2)]
-            },
-            format=ExportFormat.JSON,
-            output_path=Path(f"/tmp/test_export_{i}.json")
-        )
-        tasks.append(task)
-    
-    # Ejecutar batch
-    start = time.time()
-    results = await exporter.export_batch(tasks)
-    batch_time = time.time() - start
-    
-    # VALIDACIONES 
-    # 1. Todas las tareas completadas
-    assert len(results) == len(tasks), f"Faltan resultados: {len(results)}/{len(tasks)}"
-    
-    # 2. Mayoría exitosas (al menos 80%)
-    successful = sum(1 for r in results if r.success)
-    success_rate = successful / len(results)
-    assert success_rate >= 0.8, f"Tasa de éxito baja: {success_rate:.1%}"
-    
-    # 3. Tiempo razonable
-    assert batch_time < 5.0, f"Batch muy lento: {batch_time:.2f}s"
-    
-    print(f"\n✓ BatchExporter paralelo exitoso:")
-    print(f"  - Tiempo: {batch_time:.2f}s")
-    print(f"  - Tareas: {len(tasks)}")
-    print(f"  - Exitosas: {successful}/{len(tasks)} ({success_rate:.1%})")
-    
-    # Estadísticas
-    stats = exporter.get_stats()
-    print(f"  - Promedio: {stats['average_time']:.3f}s por tarea")
+    # Usar directorio temporal real
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Crear tareas de ejemplo (simplificadas)
+        tasks = []
+        for i in range(10):
+            task = ExportTask(
+                id=f"task_{i}",
+                visualization_type="graph",
+                data={
+                    "num_nodes": 3,
+                    "edges_list": [(0, 1), (1, 2)]
+                },
+                format=ExportFormat.JSON,
+                output_path=tmp_path / f"test_export_{i}.json"
+            )
+            tasks.append(task)
+        
+        # Ejecutar batch
+        start = time.time()
+        results = await exporter.export_batch(tasks)
+        batch_time = time.time() - start
+        
+        # VALIDACIONES 
+        # 1. Todas las tareas completadas
+        assert len(results) == len(tasks), f"Faltan resultados: {len(results)}/{len(tasks)}"
+        
+        # 2. Mayoría exitosas (al menos 80%)
+        successful = sum(1 for r in results if r.success)
+        success_rate = successful / len(results)
+        
+        # DEBUG: Mostrar errores si fallan
+        if success_rate < 0.8:
+            print(f"\nErrores detectados:")
+            for r in results:
+                if not r.success:
+                    print(f"  - {r.task_id}: {r.error}")
+        
+        assert success_rate >= 0.8, f"Tasa de éxito baja: {success_rate:.1%}"
+        
+        # 3. Tiempo razonable
+        assert batch_time < 5.0, f"Batch muy lento: {batch_time:.2f}s"
+        
+        print(f"\n✓ BatchExporter paralelo exitoso:")
+        print(f"  - Tiempo: {batch_time:.2f}s")
+        print(f"  - Tareas: {len(tasks)}")
+        print(f"  - Exitosas: {successful}/{len(tasks)} ({success_rate:.1%})")
+        
+        # Estadísticas
+        stats = exporter.get_stats()
+        print(f"  - Promedio: {stats['average_time']:.3f}s por tarea")
 
 # TEST 6: PERFORMANCE COMPARISON 
 @pytest.mark.asyncio

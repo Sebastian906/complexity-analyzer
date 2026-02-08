@@ -327,3 +327,7 @@ def get_logger(name: Optional[str] = None) -> logger: # type: ignore
     """
     # Use setup_logger to ensure handlers are configured lazily.
     return setup_logger(name)
+
+def warn(self, message):
+    """Alias para warning"""
+    return self.warning(message)
