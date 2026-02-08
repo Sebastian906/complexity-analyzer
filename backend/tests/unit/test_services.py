@@ -78,8 +78,8 @@ end
 
 @pytest.fixture
 def algorithm_service(tmp_path):
-    """AlgorithmService con directorio temporal"""
-    return AlgorithmService(storage_path=tmp_path)
+    """AlgorithmService con directorio temporal, sin MongoDB"""
+    return AlgorithmService(storage_path=tmp_path, use_mongodb=False)
 
 @pytest.fixture
 def analysis_orchestrator():

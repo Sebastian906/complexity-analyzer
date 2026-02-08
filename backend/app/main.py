@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     Maneja eventos de inicio y apagado de manera asíncrona.
     """
     # STARTUP - Inicialización
+    print("LIFESPAN STARTUP INICIADO")
     logger.info(f"Iniciando {settings.APP_NAME} v{__version__}")
     logger.info(f"Entorno: {settings.APP_ENV}")
     logger.info(f"Debug Mode: {settings.DEBUG}")
@@ -69,7 +70,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         
         if settings.DATABASE_TYPE == "mongodb":
             try:
-                from app.infrastructure.database.mongodb_client import get_mongodb_client
+                from app.infrastructure.database.mongodb_client import get_mongodb_client, reset_mongodb_client
+                from app.api.v1.endpoints.algorithms import reset_algorithm_service
+                
+                # Resetear singletons para asegurar estado limpio (importante para tests)
+                reset_mongodb_client()
+                reset_algorithm_service()
+                
                 await get_mongodb_client().connect()
                 logger.info("MongoDB conectado")
             except ImportError:

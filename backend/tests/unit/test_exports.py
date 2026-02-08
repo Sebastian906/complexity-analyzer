@@ -7,6 +7,8 @@ Prueba los exportadores en diferentes formatos.
 import pytest
 from pathlib import Path
 from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
 
 from app.infrastructure.export import (
     ExportFormat,
@@ -16,17 +18,55 @@ from app.infrastructure.export import (
     PDF_AVAILABLE,
     EXCEL_AVAILABLE,
 )
-from app.infrastructure.database.models.mongo import (
-    Algorithm,
-    AnalysisResult,
-    PatternDetection
-)
+
+# Mock classes para evitar dependencia de Beanie/MongoDB
+@dataclass
+class MockAlgorithm:
+    """Mock de Algorithm para tests sin MongoDB"""
+    name: str
+    code: str
+    language: str = "pseudocode"
+    category: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+    description: Optional[str] = None
+    author: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    id: Optional[str] = None
+
+@dataclass
+class MockAnalysisResult:
+    """Mock de AnalysisResult para tests sin MongoDB"""
+    algorithm: MockAlgorithm
+    big_o: str
+    omega: str
+    theta: Optional[str] = None
+    space_complexity: Optional[str] = None
+    temporal_recurrence: Optional[str] = None
+    spatial_recurrence: Optional[str] = None
+    line_by_line: Dict[str, Any] = field(default_factory=dict)
+    analysis_time: float = 0.0
+    analyzer_version: str = "1.0.0"
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    algorithm_id: Optional[str] = None
+
+@dataclass
+class MockPatternDetection:
+    """Mock de PatternDetection para tests sin MongoDB"""
+    algorithm: MockAlgorithm
+    primary_pattern: str
+    primary_confidence: float
+    patterns_found: List[Dict[str, Any]] = field(default_factory=list)
+    structures_found: List[Dict[str, Any]] = field(default_factory=list)
+    detection_time: float = 0.0
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
 
 # FIXTURES
 @pytest.fixture
 def sample_algorithm():
     """Crea un algoritmo de ejemplo para pruebas"""
-    return Algorithm(
+    return MockAlgorithm(
         name="quicksort",
         code="""algorithm quicksort(A[1..n])
 begin
@@ -48,7 +88,7 @@ end""",
 @pytest.fixture
 def sample_analysis(sample_algorithm):
     """Crea un resultado de análisis de ejemplo"""
-    return AnalysisResult(
+    return MockAnalysisResult(
         algorithm=sample_algorithm,
         big_o="O(n log n)",
         omega="Ω(n log n)",
@@ -69,7 +109,7 @@ def sample_analysis(sample_algorithm):
 @pytest.fixture
 def sample_patterns(sample_algorithm):
     """Crea detección de patrones de ejemplo"""
-    return PatternDetection(
+    return MockPatternDetection(
         algorithm=sample_algorithm,
         primary_pattern="divide_and_conquer",
         primary_confidence=0.95,

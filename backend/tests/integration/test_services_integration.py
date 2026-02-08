@@ -128,8 +128,8 @@ begin
 
 @pytest.fixture
 def algorithm_service():
-    """Servicio de algoritmos"""
-    return AlgorithmService()
+    """Servicio de algoritmos sin MongoDB"""
+    return AlgorithmService(use_mongodb=False)
 
 @pytest.fixture
 def analysis_orchestrator():
