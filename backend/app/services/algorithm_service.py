@@ -65,7 +65,8 @@ class AlgorithmService:
         self,
         storage_path: Optional[Path] = None,
         parser: Optional[PseudocodeParser] = None,
-        repository: Optional[AlgorithmRepository] = None
+        repository: Optional[AlgorithmRepository] = None,
+        use_mongodb: bool = True
     ):
         """
         Inicializa el servicio.
@@ -73,12 +74,22 @@ class AlgorithmService:
         Args:
             storage_path: Ruta para almacenar algoritmos
             parser: Parser personalizado
+            repository: Repositorio de algoritmos (opcional)
+            use_mongodb: Si True y no se pasa repository, crea uno. Si False, no usa MongoDB.
         """
         self.storage_path = storage_path or settings.ALGORITHMS_PATH
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.parser = parser or PseudocodeParser()
-        self.repository = repository or AlgorithmRepository()
+        
+        # Solo crear repository automáticamente si use_mongodb=True y no se proporcionó uno
+        if repository is not None:
+            self.repository = repository
+        elif use_mongodb:
+            self.repository = AlgorithmRepository()
+        else:
+            self.repository = None
+            
         self._initialized = False
 
         # Índice en memoria (migrar a MongoDB en producción)
@@ -99,19 +110,31 @@ class AlgorithmService:
         
         Debe llamarse después de crear la instancia.
         """
-        if self._initialized:
+        from app.infrastructure.database import get_mongodb_client
+        
+        logger.debug(f"initialize() llamado: _initialized={self._initialized}")
+        
+        mongo_client = get_mongodb_client()
+        
+        # Verificar si necesitamos reconectar (loop cerrado o nuevo loop)
+        needs_reconnect = mongo_client.needs_reconnect()
+        
+        if self._initialized and not needs_reconnect:
+            logger.debug("Ya inicializado y conexión válida, retornando")
             return
-            
-        if self.repository is None:
-            from app.infrastructure.database import get_mongodb_client
-            
-            # Conectar a MongoDB si no está conectado
-            mongo_client = get_mongodb_client()
-            if not mongo_client.is_connected:
-                await mongo_client.connect()
-            
-            # Crear repository
-            self.repository = AlgorithmRepository()
+        
+        # Reconectar si es necesario
+        if needs_reconnect:
+            logger.info("Reconectando MongoDB debido a cambio de event loop...")
+            self._initialized = False
+        
+        # Conectar/reconectar a MongoDB
+        logger.debug("Llamando mongo_client.connect()...")
+        await mongo_client.connect()
+        logger.debug("mongo_client.connect() completado")
+        
+        # SIEMPRE recrear repository después de reconexión para evitar referencias stale
+        self.repository = AlgorithmRepository()
         
         self._initialized = True
         logger.info("AlgorithmService conectado a MongoDB")
@@ -167,83 +190,91 @@ class AlgorithmService:
 
     async def _create_impl(self, request: AlgorithmCreate) -> AlgorithmResponse:
         """Implementación interna de create."""
-        # Validar tamaño del código
-        self._validate_code_size(request.code)
-
-        # Parsear para validar sintaxis y extraer información
+        import traceback
+        
         try:
-            ast = self.parser.parse(request.code, validate=True)
+            # Validar tamaño del código
+            self._validate_code_size(request.code)
+
+            # Parsear para validar sintaxis y extraer información
+            try:
+                ast = self.parser.parse(request.code, validate=True)
+            except Exception as e:
+                logger.error(f"Error parseando algoritmo: {e}")
+                raise ValidationException(f"Código inválido: {e}")
+
+            # Extraer información del AST
+            algorithm_info = self._extract_algorithm_info(ast)
+            logger.debug(f"Info extraída: {algorithm_info}")
+
+            # Generar timestamps
+            now = datetime.utcnow()
+
+            # Guardar en MongoDB si hay repository disponible
+            if self.repository:
+                # Crear modelo para MongoDB (sin id para que Mongo genere ObjectId)
+                logger.debug("Creando AlgorithmModel para MongoDB...")
+                algorithm_model = AlgorithmModel(
+                    name=request.name,
+                    description=request.description,
+                    category=request.category.value if request.category else None,
+                    tags=request.tags or [],
+                    language=request.language.value if hasattr(request.language, 'value') else (request.language or "pseudocode"),
+                    code=request.code,
+                    created_at=now,
+                    updated_at=now,
+                )
+                logger.debug(f"AlgorithmModel creado: {algorithm_model.name}")
+                logger.debug("Llamando repository.create()...")
+                created_model = await self.repository.create(algorithm_model)
+                # Obtener id asignado por Mongo como string
+                algorithm_id = str(created_model.id)
+                logger.info(f"Algoritmo guardado en MongoDB: {algorithm_id}")
+                # Usar timestamps devueltos por el modelo creado si existen
+                created_at = getattr(created_model, 'created_at', now)
+                updated_at = getattr(created_model, 'updated_at', now)
+            else:
+                # Sin repository: usar UUID local, NO crear AlgorithmModel (Beanie)
+                algorithm_id = str(uuid4())
+                created_at = now
+                updated_at = now
+                logger.debug("Sin repository MongoDB, usando almacenamiento local")
+
+            # Crear objeto Algorithm (schema de respuesta) usando id como string
+            algorithm = Algorithm(
+                id=algorithm_id,
+                name=request.name,
+                description=request.description,
+                category=request.category,
+                tags=request.tags,
+                language=request.language,
+                code=request.code,
+                info=algorithm_info,
+                created_at=created_at,
+                updated_at=updated_at,
+                analyzed=False,
+                analysis_count=0,
+                complexity_class=None,
+                big_o=None,
+            )
+
+            # Guardar en disco
+            await self._save_to_disk(algorithm)
+
+            # Agregar al índice
+            self._algorithms[algorithm_id] = algorithm
+
+            logger.info(f"Algoritmo creado: {algorithm_id} - {request.name}")
+
+            return AlgorithmResponse(
+                success=True,
+                message="Algoritmo creado exitosamente",
+                algorithm=algorithm
+            )
         except Exception as e:
-            logger.error(f"Error parseando algoritmo: {e}")
-            raise ValidationException(f"Código inválido: {e}")
-
-        # Extraer información del AST
-        algorithm_info = self._extract_algorithm_info(ast)
-
-        # No forzamos un id para MongoDB: dejamos que Beanie genere el ObjectId
-        # Generar timestamps
-        now = datetime.utcnow()
-
-        # Crear modelo para MongoDB (sin id para que Mongo genere ObjectId)
-        algorithm_model = AlgorithmModel(
-            name=request.name,
-            description=request.description,
-            category=request.category.value if request.category else None,
-            tags=request.tags or [],
-            language=request.language.value if hasattr(request.language, 'value') else (request.language or "pseudocode"),
-            code=request.code,
-            created_at=now,
-            updated_at=now,
-        )
-
-        # Guardar en MongoDB (si hay repository)
-        if self.repository:
-            created_model = await self.repository.create(algorithm_model)
-            # Obtener id asignado por Mongo como string
-            algorithm_id = str(created_model.id)
-            logger.info(f"Algoritmo guardado en MongoDB: {algorithm_id}")
-            # Usar timestamps devueltos por el modelo creado si existen
-            created_at = getattr(created_model, 'created_at', now)
-            updated_at = getattr(created_model, 'updated_at', now)
-        else:
-            # Fallback: usar un UUID local si no hay repository
-            algorithm_id = str(uuid4())
-            created_model = algorithm_model
-            created_at = now
-            updated_at = now
-            logger.warning("Repository no disponible, solo guardado local")
-
-        # Crear objeto Algorithm (schema de respuesta) usando id como string
-        algorithm = Algorithm(
-            id=algorithm_id,
-            name=request.name,
-            description=request.description,
-            category=request.category,
-            tags=request.tags,
-            language=request.language,
-            code=request.code,
-            info=algorithm_info,
-            created_at=created_at,
-            updated_at=updated_at,
-            analyzed=False,
-            analysis_count=0,
-            complexity_class=None,
-            big_o=None,
-        )
-
-        # Guardar en disco
-        await self._save_to_disk(algorithm)
-
-        # Agregar al índice
-        self._algorithms[algorithm_id] = algorithm
-
-        logger.info(f"Algoritmo creado: {algorithm_id} - {request.name}")
-
-        return AlgorithmResponse(
-            success=True,
-            message="Algoritmo creado exitosamente",
-            algorithm=algorithm
-        )
+            logger.error(f"Error en _create_impl: {type(e).__name__}: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            raise
 
     async def get(self, algorithm_id: str) -> Optional[AlgorithmResponse]:
         """

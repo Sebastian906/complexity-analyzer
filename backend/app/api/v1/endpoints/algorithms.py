@@ -24,19 +24,25 @@ router = APIRouter()
 
 _service_instance = None
 
+def reset_algorithm_service() -> None:
+    """Resetear el singleton del AlgorithmService (para tests/reinicio)"""
+    global _service_instance
+    _service_instance = None
+
 async def get_algorithm_service() -> AlgorithmService:
     """
     Dependency para obtener instancia del AlgorithmService.
     
-    Inicializa la conexión a MongoDB la primera vez.
+    Inicializa la conexión a MongoDB la primera vez o cuando el event loop cambie.
     """
     global _service_instance
     
     if _service_instance is None:
         _service_instance = AlgorithmService()
-        # INICIALIZAR CONEXIÓN A MONGODB
-        await _service_instance.initialize()
-        logger.info("AlgorithmService inicializado con MongoDB")
+        logger.info("Nuevo AlgorithmService creado")
+    
+    # SIEMPRE llamar initialize() - maneja internamente si necesita reconectar
+    await _service_instance.initialize()
     
     return _service_instance
 

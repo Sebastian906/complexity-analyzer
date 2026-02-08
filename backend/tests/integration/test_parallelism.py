@@ -171,9 +171,37 @@ def test_export_multiple_formats_parallel(tmp_path):
     3. Sea más rápido que secuencial
     """
     from app.infrastructure.export import export_to_multiple_formats, ExportFormat
-    from app.infrastructure.database.models.mongo.algorithm import Algorithm
-    from app.infrastructure.database.models.mongo.analysis_result import AnalysisResult
+    from dataclasses import dataclass, field
+    from typing import Optional, List, Dict, Any
     from datetime import datetime
+    
+    # Mock classes para evitar dependencia de Beanie/MongoDB
+    @dataclass
+    class MockAlgorithm:
+        name: str
+        code: str
+        language: str = "pseudocode"
+        category: Optional[str] = None
+        tags: List[str] = field(default_factory=list)
+        description: Optional[str] = None
+        author: Optional[str] = None
+        created_at: datetime = field(default_factory=datetime.utcnow)
+        id: Optional[str] = None
+    
+    @dataclass
+    class MockAnalysisResult:
+        algorithm: MockAlgorithm
+        big_o: str
+        omega: str
+        theta: Optional[str] = None
+        space_complexity: Optional[str] = None
+        temporal_recurrence: Optional[str] = None
+        spatial_recurrence: Optional[str] = None
+        line_by_line: Dict[str, Any] = field(default_factory=dict)
+        analysis_time: float = 0.0
+        analyzer_version: str = "1.0.0"
+        created_at: datetime = field(default_factory=datetime.utcnow)
+        algorithm_id: Optional[str] = None
     
     # Código con SINTAXIS CORREGIDA
     code = """algorithm bubblesort(arr)
@@ -190,8 +218,8 @@ begin
         end
 end"""
     
-    # Crear algoritmo
-    algorithm = Algorithm(
+    # Crear algoritmo usando mock
+    algorithm = MockAlgorithm(
         name="bubble_sort",
         code=code,
         language="pseudocode",
@@ -199,10 +227,9 @@ end"""
         created_at=datetime.utcnow()
     )
     
-    # Crear análisis - CORREGIDO con campo 'algorithm'
-    analysis = AnalysisResult(
-        algorithm=algorithm,  # ← Relación requerida
-        algorithm_id=str(algorithm.id),
+    # Crear análisis usando mock
+    analysis = MockAnalysisResult(
+        algorithm=algorithm,
         big_o="O(n²)",
         omega="Ω(n)",
         theta="Θ(n²)",

@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import traceback
 
 from app.infrastructure.database.repositories.base_repository import BaseRepository
 from app.infrastructure.database.models.mongo import Algorithm
@@ -17,7 +18,9 @@ class AlgorithmRepository(BaseRepository[Algorithm]):
             logger.info(f"Algoritmo creado: {entity.id}")
             return entity
         except Exception as e:
-            logger.error(f"Error creando algoritmo: {e}")
+            # Log detallado para debugging
+            logger.error(f"Error creando algoritmo: {type(e).__name__}: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
     async def get_by_id(self, id: str) -> Optional[Algorithm]:

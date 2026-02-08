@@ -15,25 +15,9 @@ from app.core.config import settings
 
 from app.core.parser import PseudocodeParser
 
-# --- FIXTURE PARA INICIALIZAR BEANIE Y MONGODB ---
-from motor.motor_asyncio import AsyncIOMotorClient
-from beanie import init_beanie
-from app.infrastructure.database.models.mongo.algorithm import Algorithm
-from app.infrastructure.database.models.mongo.analysis_result import AnalysisResult
-from app.infrastructure.database.models.mongo.pattern_detection import PatternDetection
-from app.infrastructure.database import get_mongodb_client
-
-# Inicializa la conexión a MongoDB y Beanie antes de los tests
-@pytest.fixture(scope="session", autouse=True)
-async def init_mongodb():
-    """
-    Inicializa la conexión de MongoDB y Beanie para todas las pruebas.
-    """
-    # Usar el cliente singleton para que todos los tests compartan la misma conexión
-    mongodb_client = get_mongodb_client()
-    await mongodb_client.connect()
-    yield  # Mantener la conexión durante toda la sesión de tests
-    await mongodb_client.close()
+# --- NOTA: MongoDB se inicializa automáticamente via lifespan en main.py ---
+# No usar fixture de sesión para MongoDB ya que TestClient maneja el ciclo de vida
+# a través del lifespan handler de FastAPI, evitando conflictos de event loops.
 
 # Fixtures de Cliente API
 @pytest.fixture(scope="session")
@@ -46,12 +30,12 @@ def test_client() -> Generator[TestClient, None, None]:
     with TestClient(app) as client:
         yield client
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def client() -> Generator[TestClient, None, None]:
     """
-    Fixture: Cliente de prueba (function scope).
+    Fixture: Cliente de prueba (session scope).
 
-    Scope: function - Se crea nuevo cliente para cada test
+    Scope: session - Un único cliente para evitar problemas de event loop con MongoDB
     """
     with TestClient(app) as client:
         yield client
@@ -78,9 +62,9 @@ def parser_instance() -> PseudocodeParser:
 # Fixtures de Servicios (para tests de integración)
 @pytest.fixture
 def algorithm_service():
-    """Fixture: AlgorithmService para tests de integración"""
+    """Fixture: AlgorithmService para tests de integración (sin MongoDB)"""
     from app.services import AlgorithmService
-    return AlgorithmService()
+    return AlgorithmService(use_mongodb=False)
 
 @pytest.fixture
 def analysis_orchestrator():
