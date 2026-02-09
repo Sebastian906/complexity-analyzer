@@ -107,7 +107,7 @@ end"""
         
         # 5. Exportar DIRECTAMENTE sin guardar en DB
         print("\n5. Testing direct export (without DB)...")
-        export_formats = ["json", "markdown", "html"]
+        export_formats = ["json", "md", "html"]
         
         for fmt in export_formats:
             response = httpx.post(
