@@ -56,11 +56,13 @@ begin
 end"""
     
     response = httpx.post(
-        f"{BASE_URL}/api/v1/analysis/analyze",
+        f"{BASE_URL}/api/v1/analysis/analyze-complete",
         json={
             "code": code,
-            "analyze_temporal": True,
-            "analyze_spatial": True
+            "options": {
+                "analyze_line_by_line": True,
+                "analyze_spatial": True
+            }
         },
         timeout=30.0
     )
@@ -75,9 +77,12 @@ end"""
         
         table.add_row("Success", str(data.get("success", "N/A")))
         table.add_row("Algorithm Name", data.get("algorithm_name", "N/A"))
-        table.add_row("Big O", data.get("big_o", "N/A"))
-        table.add_row("Omega", data.get("omega", "N/A"))
-        table.add_row("Theta", data.get("theta", "N/A"))
+        
+        # Extraer de complexity object
+        complexity = data.get("complexity", {})
+        table.add_row("Big O", complexity.get("big_o", "N/A"))
+        table.add_row("Omega", complexity.get("omega", "N/A"))
+        table.add_row("Theta", complexity.get("theta", "N/A"))
         table.add_row("Message", data.get("message", "N/A"))
         
         console.print(table)
