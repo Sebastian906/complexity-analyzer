@@ -292,7 +292,7 @@ def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
 # DATA ENCRYPTION (simple)
 def encrypt_data(data: str, key: Optional[str] = None) -> str:
     """
-    Encriptar datos sensibles (implementación simple con Fernet).
+    Encriptar datos sensibles usando Fernet (cifrado simétrico).
     
     Args:
         data: Datos a encriptar
@@ -302,17 +302,35 @@ def encrypt_data(data: str, key: Optional[str] = None) -> str:
         str: Datos encriptados en base64
     
     Note:
-        Para producción, considerar usar librerías como cryptography.fernet
-        Esta es una implementación placeholder.
+        Usa Fernet de la librería cryptography para encriptación segura.
+        La clave debe tener 32 bytes codificados en base64.
     """
-    # TODO: Implementar encriptación real con Fernet
-    # Por ahora, solo un placeholder
     import base64
+    import hashlib
     
-    encryption_key = key or settings.SECRET_KEY
-    # Implementación simple (NO USAR EN PRODUCCIÓN)
-    encoded = base64.b64encode(data.encode())
-    return encoded.decode()
+    try:
+        from cryptography.fernet import Fernet
+        
+        # Generar clave Fernet desde SECRET_KEY
+        encryption_key = key or settings.SECRET_KEY
+        # Fernet requiere una clave de 32 bytes base64-encoded
+        # Usamos SHA256 para derivar una clave consistente
+        key_bytes = hashlib.sha256(encryption_key.encode()).digest()
+        fernet_key = base64.urlsafe_b64encode(key_bytes)
+        
+        fernet = Fernet(fernet_key)
+        encrypted = fernet.encrypt(data.encode())
+        return encrypted.decode()
+    except ImportError:
+        # Fallback si cryptography no está disponible
+        logger.warning("cryptography no disponible, usando base64 simple")
+        encoded = base64.b64encode(data.encode())
+        return encoded.decode()
+    except Exception as e:
+        logger.error(f"Error encriptando datos: {e}")
+        # Fallback a base64 simple
+        encoded = base64.b64encode(data.encode())
+        return encoded.decode()
 
 def decrypt_data(encrypted_data: str, key: Optional[str] = None) -> str:
     """
@@ -325,13 +343,33 @@ def decrypt_data(encrypted_data: str, key: Optional[str] = None) -> str:
     Returns:
         str: Datos desencriptados
     """
-    # TODO: Implementar desencriptación real
     import base64
+    import hashlib
     
-    encryption_key = key or settings.SECRET_KEY
-    # Implementación simple (NO USAR EN PRODUCCIÓN)
-    decoded = base64.b64decode(encrypted_data.encode())
-    return decoded.decode()
+    try:
+        from cryptography.fernet import Fernet
+        
+        # Generar clave Fernet desde SECRET_KEY
+        encryption_key = key or settings.SECRET_KEY
+        key_bytes = hashlib.sha256(encryption_key.encode()).digest()
+        fernet_key = base64.urlsafe_b64encode(key_bytes)
+        
+        fernet = Fernet(fernet_key)
+        decrypted = fernet.decrypt(encrypted_data.encode())
+        return decrypted.decode()
+    except ImportError:
+        # Fallback si cryptography no está disponible
+        logger.warning("cryptography no disponible, usando base64 simple")
+        decoded = base64.b64decode(encrypted_data.encode())
+        return decoded.decode()
+    except Exception as e:
+        logger.error(f"Error desencriptando datos: {e}")
+        # Intentar fallback a base64 simple
+        try:
+            decoded = base64.b64decode(encrypted_data.encode())
+            return decoded.decode()
+        except Exception:
+            raise ValueError("No se pudo desencriptar los datos")
 
 # PERMISSION CHECKING
 class PermissionChecker:

@@ -261,8 +261,8 @@ class SpaceAnalyzer:
             # Verificar si es llamada recursiva
             if statement.function_name == algorithm_name:
                 self.is_recursive = True
-                # TODO: Calcular profundidad de recursión
-                self.recursion_depth = "n"  # Placeholder
+                # Calcular profundidad de recursión analizando argumentos
+                self.recursion_depth = self._estimate_recursion_depth(statement)
     
     def _analyze_assignment(self, assignment: AssignmentNode):
         """Analiza una asignación"""
@@ -275,9 +275,9 @@ class SpaceAnalyzer:
         elif target.access_type == "array":
             # Registrar array
             if target.name not in self.array_parameters:
-                # Array local
-                # TODO: Determinar dimensiones
-                self.arrays[target.name] = ["n"]  # Placeholder
+                # Array local - determinar dimensiones del contexto
+                dimensions = self._determine_array_dimensions(assignment)
+                self.arrays[target.name] = dimensions
     
     def _analyze_for_loop(self, for_loop: ForLoopNode, algorithm_name: str):
         """Analiza un FOR loop"""
@@ -405,3 +405,75 @@ class SpaceAnalyzer:
             parts.append(f"- Espacio de pila de recursión: O({recursion_space})")
         
         return "\n".join(parts)
+    
+    def _estimate_recursion_depth(self, call_statement: CallStatementNode) -> str:
+        """
+        Estima la profundidad de recursión analizando los argumentos.
+        
+        Heurísticas:
+        - Si el argumento es n/2 o similar: log n
+        - Si el argumento es n-1 o similar: n
+        - Si hay múltiples llamadas recursivas: n (caso conservador)
+        """
+        from app.core.parser.ast_nodes import BinaryOpNode, VariableNode, LiteralNode
+        
+        if not call_statement.arguments:
+            return "n"  # Conservador si no hay argumentos
+        
+        # Analizar el primer argumento (típicamente el tamaño del problema)
+        first_arg = call_statement.arguments[0] if call_statement.arguments else None
+        
+        if first_arg is None:
+            return "n"
+        
+        # Buscar patrones comunes en el argumento
+        if isinstance(first_arg, BinaryOpNode):
+            op = first_arg.operator
+            
+            # Patrón n/2, n/k -> profundidad log n
+            if op == "/" or op == "//":
+                return "log n"
+            
+            # Patrón n-1, n-k -> profundidad n
+            if op == "-":
+                return "n"
+        
+        # Patrón por defecto: asumir profundidad lineal
+        return "n"
+    
+    def _determine_array_dimensions(self, assignment: AssignmentNode) -> list:
+        """
+        Determina las dimensiones de un array analizando la asignación.
+        
+        Analiza el lado derecho de la asignación para inferir el tamaño.
+        """
+        from app.core.parser.ast_nodes import (
+            ArrayAccessNode, BinaryOpNode, VariableNode, LiteralNode
+        )
+        
+        dimensions = []
+        
+        # Obtener índices del acceso al array
+        target = assignment.target
+        if hasattr(target, 'indices') and target.indices:
+            for idx in target.indices:
+                # Si el índice es un identificador (ej: i, j, n)
+                if isinstance(idx, VariableNode):
+                    # Si es una variable de iteración típica, asumimos n
+                    if idx.name in ('n', 'm', 'size', 'length'):
+                        dimensions.append('n')
+                    else:
+                        # Variables de loop como i, j típicamente van hasta n
+                        dimensions.append('n')
+                elif isinstance(idx, LiteralNode):
+                    # Índice literal, tamaño constante
+                    dimensions.append(str(idx.value))
+                else:
+                    # Expresión compleja, asumir n
+                    dimensions.append('n')
+        
+        # Si no hay dimensiones detectadas, asumir una dimensión n
+        if not dimensions:
+            dimensions = ['n']
+        
+        return dimensions

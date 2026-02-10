@@ -309,11 +309,75 @@ async def analyze_complete(request: CompleteAnalysisRequest):
 )
 async def analyze_batch(request: BatchAnalysisRequest):
     """Análisis en batch de múltiples algoritmos"""
-    # TODO: Implementar lógica de batch
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint en desarrollo"
-    )
+    import asyncio
+    import time
+    from app.schemas.analysis_result import BatchAnalysisItemResult
+    
+    start_time = time.time()
+    results = []
+    successful = 0
+    failed = 0
+    
+    async def analyze_item(item):
+        """Analiza un item individual"""
+        try:
+            analysis_request = CompleteAnalysisRequest(
+                code=item.code,
+                language=item.language,
+                algorithm_name=item.algorithm_name,
+                analysis_type=request.analysis_type
+            )
+            result = await analysis_orchestrator.analyze(analysis_request)
+            return BatchAnalysisItemResult(
+                id=item.id,
+                success=True,
+                result=result,
+                error=None
+            )
+        except Exception as e:
+            logger.error(f"Error analizando item {item.id}: {e}")
+            return BatchAnalysisItemResult(
+                id=item.id,
+                success=False,
+                result=None,
+                error=str(e)
+            )
+    
+    try:
+        if request.parallel:
+            # Procesar en paralelo
+            tasks = [analyze_item(item) for item in request.items]
+            results = await asyncio.gather(*tasks)
+        else:
+            # Procesar secuencialmente
+            for item in request.items:
+                result = await analyze_item(item)
+                results.append(result)
+        
+        # Contar resultados
+        for result in results:
+            if result.success:
+                successful += 1
+            else:
+                failed += 1
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        return BatchAnalysisResult(
+            success=True,
+            message=f"Batch completado: {successful} exitosos, {failed} fallidos",
+            results=list(results),
+            total=len(request.items),
+            successful=successful,
+            failed=failed,
+            processing_time_ms=processing_time
+        )
+    except Exception as e:
+        logger.error(f"Error en batch analysis: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @router.post(
     "/analyze-quick",
@@ -323,11 +387,53 @@ async def analyze_batch(request: BatchAnalysisRequest):
 )
 async def analyze_quick(request: QuickAnalysisRequest):
     """Análisis rápido simplificado"""
-    # TODO: Implementar análisis rápido
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint en desarrollo"
-    )
+    try:
+        from app.schemas.analysis_request import AnalysisType
+        
+        # Crear request con análisis básico (solo complejidad)
+        analysis_request = CompleteAnalysisRequest(
+            code=request.code,
+            analysis_type=AnalysisType.BASIC  # Solo complejidad básica
+        )
+        
+        # Ejecutar análisis
+        result = await analysis_orchestrator.analyze(analysis_request)
+        
+        # Extraer datos principales
+        algorithm_name = result.algorithm_name if hasattr(result, 'algorithm_name') else "unknown"
+        complexity = result.complexity if hasattr(result, 'complexity') else {}
+        space = result.space if hasattr(result, 'space') else {}
+        patterns = result.patterns if hasattr(result, 'patterns') else []
+        
+        # Obtener complejidades
+        big_o = complexity.get('big_o', 'O(?)') if isinstance(complexity, dict) else 'O(?)'
+        omega = complexity.get('omega', 'Ω(?)') if isinstance(complexity, dict) else 'Ω(?)'
+        theta = complexity.get('theta') if isinstance(complexity, dict) else None
+        space_complexity = space.get('total', 'O(1)') if isinstance(space, dict) else 'O(1)'
+        
+        # Patrón principal (si existe)
+        primary_pattern = patterns[0].get('name') if patterns and isinstance(patterns, list) else None
+        
+        # Generar resumen
+        summary = f"Complejidad temporal: {big_o}, espacial: {space_complexity}"
+        
+        return QuickAnalysisResult(
+            success=True,
+            message="Análisis rápido completado",
+            algorithm_name=algorithm_name,
+            big_o=big_o,
+            omega=omega,
+            theta=theta,
+            space_complexity=space_complexity,
+            primary_pattern=primary_pattern,
+            summary=summary
+        )
+    except Exception as e:
+        logger.error(f"Error en análisis rápido: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 # ENDPOINTS - VALIDACIÓN
 @router.post(
@@ -431,11 +537,70 @@ async def export_results(request: ExportRequest):
 )
 async def export_batch(request: BatchExportRequest):
     """Exportación en batch"""
-    # TODO: Implementar
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint en desarrollo"
-    )
+    import time
+    from app.schemas.export import BatchExportItemResult
+    
+    start_time = time.time()
+    results = []
+    successful = 0
+    failed = 0
+    total_size = 0
+    
+    try:
+        for item in request.items:
+            try:
+                # Crear request individual de exportación
+                export_request = ExportRequest(
+                    analysis_id=item.analysis_id,
+                    options=request.options,
+                    filename=item.filename
+                )
+                
+                # Ejecutar exportación
+                result = await export_service.export(export_request)
+                
+                results.append(BatchExportItemResult(
+                    analysis_id=item.analysis_id,
+                    success=True,
+                    result=result,
+                    error=None
+                ))
+                successful += 1
+                
+                if result and hasattr(result, 'file_size_bytes'):
+                    total_size += result.file_size_bytes or 0
+                    
+            except Exception as e:
+                logger.error(f"Error exportando {item.analysis_id}: {e}")
+                results.append(BatchExportItemResult(
+                    analysis_id=item.analysis_id,
+                    success=False,
+                    result=None,
+                    error=str(e)
+                ))
+                failed += 1
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        return BatchExportResult(
+            success=True,
+            message=f"Batch export completado: {successful} exitosos, {failed} fallidos",
+            results=results,
+            total=len(request.items),
+            successful=successful,
+            failed=failed,
+            zip_created=False,  # ZIP no implementado aún
+            zip_path=None,
+            zip_size_bytes=None,
+            total_size_bytes=total_size,
+            processing_time_ms=processing_time
+        )
+    except Exception as e:
+        logger.error(f"Error en batch export: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 # ENDPOINTS - CACHÉ
 @router.get(

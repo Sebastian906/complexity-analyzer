@@ -71,11 +71,54 @@ class RateLimiter:
     def __init__(self, calls: int, period: int):
         self.calls = calls
         self.period = period
+        self._request_counts: dict = {}  # In-memory fallback
     
     async def __call__(self) -> None:
-        """Verifica rate limit"""
-        # TODO: Implementar con Redis
-        pass
+        """Verifica rate limit usando Redis o fallback en memoria"""
+        import time
+        from fastapi import HTTPException
+        
+        # Intentar usar Redis si está disponible
+        try:
+            from app.infrastructure.cache.redis_cache import get_redis_client
+            client = get_redis_client()
+            
+            if client.client:
+                # Usar Redis para rate limiting distribuido
+                key = f"rate_limit:{id(self)}:{int(time.time() // self.period)}"
+                current = await client.client.incr(key)
+                
+                if current == 1:
+                    await client.client.expire(key, self.period)
+                
+                if current > self.calls:
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=f"Rate limit excedido: {self.calls} llamadas por {self.period}s"
+                    )
+                return
+        except ImportError:
+            pass
+        except Exception:
+            pass  # Fallback a in-memory
+        
+        # Fallback: rate limiting en memoria (single instance)
+        current_window = int(time.time() // self.period)
+        key = f"{id(self)}:{current_window}"
+        
+        # Limpiar ventanas antiguas
+        old_keys = [k for k in self._request_counts if not k.endswith(f":{current_window}")]
+        for old_key in old_keys:
+            self._request_counts.pop(old_key, None)
+        
+        # Incrementar contador
+        self._request_counts[key] = self._request_counts.get(key, 0) + 1
+        
+        if self._request_counts[key] > self.calls:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit excedido: {self.calls} llamadas por {self.period}s"
+            )
 
 
 def rate_limit(
