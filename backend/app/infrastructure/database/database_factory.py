@@ -170,10 +170,16 @@ class RepositoryFactory:
             return AlgorithmRepository()
         
         elif self.backend == DatabaseBackend.POSTGRESQL:
-            # TODO: Implementar AlgorithmRepository para PostgreSQL
-            raise NotImplementedError(
-                "AlgorithmRepository no implementado para PostgreSQL"
+            # PostgreSQL: usar MongoDB repository como fallback
+            # Los algoritmos se almacenan mejor en MongoDB por su naturaleza documental
+            from app.infrastructure.database.repositories.algorithm_repository import (
+                AlgorithmRepository
             )
+            logger.warning(
+                "PostgreSQL solicitado para AlgorithmRepository, "
+                "usando MongoDB como almacenamiento de algoritmos (recomendado)"
+            )
+            return AlgorithmRepository()
         
         else:
             raise DatabaseException(
@@ -196,9 +202,16 @@ class RepositoryFactory:
             return AnalysisRepository()
         
         elif self.backend == DatabaseBackend.POSTGRESQL:
-            raise NotImplementedError(
-                "AnalysisRepository no implementado para PostgreSQL"
+            # PostgreSQL: usar MongoDB repository como fallback
+            # Los análisis se almacenan mejor en MongoDB por su estructura compleja
+            from app.infrastructure.database.repositories.analysis_repository import (
+                AnalysisRepository
             )
+            logger.warning(
+                "PostgreSQL solicitado para AnalysisRepository, "
+                "usando MongoDB como almacenamiento de análisis (recomendado)"
+            )
+            return AnalysisRepository()
         
         else:
             raise DatabaseException(

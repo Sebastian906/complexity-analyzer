@@ -41,15 +41,19 @@ class AggregatedMetric:
     period_end: datetime
 
 # METRICS REPOSITORY
+# Almacenamiento en memoria para métricas (fallback cuando no hay tabla)
+_metrics_store: list = []
+_MAX_METRICS_IN_MEMORY = 10000  # Límite para evitar memoria excesiva
+
 class MetricsRepository:
     """
     Repositorio para métricas y estadísticas del sistema.
     
     Note:
-        Este repositorio asume que tienes una tabla 'metrics' en PostgreSQL.
-        La estructura de la tabla puede variar según tus necesidades.
+        Este repositorio usa almacenamiento en memoria como fallback.
+        Para producción, se recomienda usar una tabla 'metrics' en PostgreSQL.
         
-    Estructura sugerida:
+    Estructura sugerida para tabla PostgreSQL:
         - id: UUID
         - name: String (nombre de la métrica)
         - value: Float (valor numérico)
@@ -95,10 +99,26 @@ class MetricsRepository:
             ...     tags={"algorithm": "quicksort", "complexity": "O(n log n)"}
             ... )
         """
+        global _metrics_store
         try:
-            # TODO: Implementar insert a tabla de métricas
-            # Por ahora, solo logging
-            logger.info(
+            # Crear objeto de métrica
+            metric = MetricData(
+                name=name,
+                value=value,
+                timestamp=timestamp or datetime.utcnow(),
+                tags=tags or {},
+                metadata=metadata
+            )
+            
+            # Almacenar en memoria
+            _metrics_store.append(metric)
+            
+            # Limitar tamaño del store para evitar memoria excesiva
+            if len(_metrics_store) > _MAX_METRICS_IN_MEMORY:
+                # Eliminar las métricas más antiguas (primeros 1000)
+                _metrics_store = _metrics_store[-(_MAX_METRICS_IN_MEMORY - 1000):]
+            
+            logger.debug(
                 f"Métrica registrada: {name}={value}",
                 extra={"tags": tags, "metadata": metadata}
             )
@@ -126,10 +146,22 @@ class MetricsRepository:
         Returns:
             List[MetricData]: Historial de la métrica
         """
+        global _metrics_store
         try:
-            # TODO: Implementar query a tabla de métricas
-            logger.debug(f"Obteniendo historial de métrica: {name}")
-            return []
+            # Filtrar métricas por nombre
+            result = [m for m in _metrics_store if m.name == name]
+            
+            # Filtrar por tiempo
+            if start_time:
+                result = [m for m in result if m.timestamp >= start_time]
+            if end_time:
+                result = [m for m in result if m.timestamp <= end_time]
+            
+            # Ordenar por timestamp descendente y limitar
+            result = sorted(result, key=lambda x: x.timestamp, reverse=True)[:limit]
+            
+            logger.debug(f"Historial de '{name}': {len(result)} registros")
+            return result
         except Exception as e:
             logger.error(f"Error obteniendo historial: {e}")
             return []
@@ -153,10 +185,57 @@ class MetricsRepository:
         Returns:
             List[AggregatedMetric]: Métricas agregadas
         """
+        global _metrics_store
         try:
-            # TODO: Implementar agregación temporal
-            logger.debug(f"Agregando métricas: {name} por {period}")
-            return []
+            from collections import defaultdict
+            
+            # Obtener historial base
+            history = await self.get_metric_history(name, start_time, end_time, limit=10000)
+            
+            if not history:
+                return []
+            
+            # Definir función de agrupación según período
+            def get_period_key(ts: datetime) -> tuple:
+                if period == "minute":
+                    return (ts.year, ts.month, ts.day, ts.hour, ts.minute)
+                elif period == "hour":
+                    return (ts.year, ts.month, ts.day, ts.hour)
+                elif period == "day":
+                    return (ts.year, ts.month, ts.day)
+                elif period == "week":
+                    return (ts.year, ts.isocalendar()[1])  # año, semana
+                else:
+                    return (ts.year, ts.month, ts.day, ts.hour)
+            
+            # Agrupar métricas por período
+            grouped: Dict[tuple, list] = defaultdict(list)
+            for metric in history:
+                key = get_period_key(metric.timestamp)
+                grouped[key].append(metric)
+            
+            # Calcular agregados
+            aggregated = []
+            for key, metrics in grouped.items():
+                values = [m.value for m in metrics]
+                timestamps = [m.timestamp for m in metrics]
+                
+                aggregated.append(AggregatedMetric(
+                    name=name,
+                    count=len(values),
+                    min_value=min(values),
+                    max_value=max(values),
+                    avg_value=sum(values) / len(values),
+                    sum_value=sum(values),
+                    period_start=min(timestamps),
+                    period_end=max(timestamps)
+                ))
+            
+            # Ordenar por período
+            aggregated.sort(key=lambda x: x.period_start, reverse=True)
+            
+            logger.debug(f"Agregado '{name}' por {period}: {len(aggregated)} períodos")
+            return aggregated
         except Exception as e:
             logger.error(f"Error agregando métricas: {e}")
             return []
@@ -179,13 +258,26 @@ class MetricsRepository:
             Dict con estadísticas: min, max, avg, count, sum
         """
         try:
-            # TODO: Implementar cálculo de estadísticas
+            # Obtener historial de métricas
+            history = await self.get_metric_history(name, start_time, end_time, limit=10000)
+            
+            if not history:
+                return {
+                    "min": 0.0,
+                    "max": 0.0,
+                    "avg": 0.0,
+                    "count": 0,
+                    "sum": 0.0
+                }
+            
+            values = [m.value for m in history]
+            
             return {
-                "min": 0.0,
-                "max": 0.0,
-                "avg": 0.0,
-                "count": 0,
-                "sum": 0.0
+                "min": min(values),
+                "max": max(values),
+                "avg": sum(values) / len(values),
+                "count": len(values),
+                "sum": sum(values)
             }
         except Exception as e:
             logger.error(f"Error obteniendo estadísticas: {e}")
@@ -204,12 +296,20 @@ class MetricsRepository:
         Returns:
             int: Número de métricas eliminadas
         """
+        global _metrics_store
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            # TODO: Implementar delete de métricas antiguas
-            logger.info(f"Eliminando métricas más antiguas que {cutoff_date}")
-            return 0
+            # Contar métricas a eliminar
+            initial_count = len(_metrics_store)
+            
+            # Filtrar métricas manteniendo las recientes
+            _metrics_store = [m for m in _metrics_store if m.timestamp >= cutoff_date]
+            
+            deleted_count = initial_count - len(_metrics_store)
+            
+            logger.info(f"Eliminadas {deleted_count} métricas más antiguas que {cutoff_date}")
+            return deleted_count
         except Exception as e:
             logger.error(f"Error eliminando métricas antiguas: {e}")
             return 0
@@ -359,18 +459,29 @@ class MetricsRepository:
             now = datetime.utcnow()
             last_hour = now - timedelta(hours=1)
 
-            # TODO: Implementar cálculo real de métricas
+            # Calcular métricas de análisis
+            analysis_stats = await self.get_metric_stats("analysis_duration", last_hour)
+            api_stats = await self.get_metric_stats("api_request_duration", last_hour)
+            llm_stats = await self.get_metric_stats("llm_tokens", last_hour)
+            llm_call_stats = await self.get_metric_stats("llm_request", last_hour)
+            
+            # Calcular cache hit rate
+            cache_hits = await self.get_metric_history("cache_hit", last_hour)
+            cache_misses = await self.get_metric_history("cache_miss", last_hour)
+            total_cache_ops = len(cache_hits) + len(cache_misses)
+            cache_hit_rate = len(cache_hits) / total_cache_ops if total_cache_ops > 0 else 0.0
+            
             return {
                 "timestamp": now.isoformat(),
                 "period": "last_hour",
                 "metrics": {
-                    "total_analyses": 0,
-                    "avg_analysis_duration": 0.0,
-                    "total_api_requests": 0,
-                    "avg_api_response_time": 0.0,
-                    "cache_hit_rate": 0.0,
-                    "llm_calls": 0,
-                    "avg_llm_tokens": 0.0
+                    "total_analyses": analysis_stats.get("count", 0),
+                    "avg_analysis_duration": analysis_stats.get("avg", 0.0),
+                    "total_api_requests": api_stats.get("count", 0),
+                    "avg_api_response_time": api_stats.get("avg", 0.0),
+                    "cache_hit_rate": cache_hit_rate,
+                    "llm_calls": llm_call_stats.get("count", 0),
+                    "avg_llm_tokens": llm_stats.get("avg", 0.0)
                 }
             }
         except Exception as e:
@@ -393,17 +504,31 @@ class MetricsRepository:
         try:
             start_date = datetime.utcnow() - timedelta(days=days)
 
-            # TODO: Implementar cálculo de estadísticas
+            # Obtener métricas del período
+            analysis_history = await self.get_metric_history("analysis_duration", start_date)
+            api_history = await self.get_metric_history("api_request_duration", start_date)
+            llm_stats = await self.get_metric_stats("llm_tokens", start_date)
+            
+            # Extraer usuarios únicos de las métricas
+            users = set()
+            algorithms = set()
+            for metric in _metrics_store:
+                if metric.timestamp >= start_date:
+                    if metric.tags.get("user_id"):
+                        users.add(metric.tags["user_id"])
+                    if metric.tags.get("algorithm_id"):
+                        algorithms.add(metric.tags["algorithm_id"])
+            
             return {
                 "period_days": days,
                 "start_date": start_date.isoformat(),
                 "statistics": {
-                    "total_users": 0,
-                    "active_users": 0,
-                    "total_analyses": 0,
-                    "total_algorithms": 0,
-                    "api_calls": 0,
-                    "llm_tokens_consumed": 0
+                    "total_users": len(users),
+                    "active_users": len(users),
+                    "total_analyses": len(analysis_history),
+                    "total_algorithms": len(algorithms),
+                    "api_calls": len(api_history),
+                    "llm_tokens_consumed": int(llm_stats.get("sum", 0))
                 }
             }
         except Exception as e:

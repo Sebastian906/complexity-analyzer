@@ -321,9 +321,26 @@ class CacheRepository:
             Usar con precaución.
         """
         try:
-            # TODO: Implementar SCAN pattern en Redis
-            logger.warning(f"Clearing cache pattern: {pattern}")
-            return 0
+            # Usar SCAN para encontrar claves que coinciden con el patrón
+            count = 0
+            if self.client.client:
+                cursor = 0
+                while True:
+                    cursor, keys = await self.client.client.scan(
+                        cursor=cursor,
+                        match=pattern,
+                        count=100
+                    )
+                    
+                    if keys:
+                        await self.client.client.delete(*keys)
+                        count += len(keys)
+                    
+                    if cursor == 0:
+                        break
+            
+            logger.info(f"Cleared {count} keys matching pattern: {pattern}")
+            return count
         except Exception as e:
             logger.error(f"Error clearing pattern {pattern}: {e}")
             return 0
@@ -353,11 +370,39 @@ class CacheRepository:
             # Verificar conexión
             is_connected = await self.client.ping()
             
-            return {
+            stats = {
                 "connected": is_connected,
                 "type": "redis",
-                # TODO: Agregar más estadísticas de Redis INFO
             }
+            
+            # Obtener estadísticas de Redis INFO
+            if is_connected and self.client.client:
+                try:
+                    info = await self.client.client.info()
+                    
+                    # Agregar estadísticas útiles
+                    stats.update({
+                        "redis_version": info.get("redis_version", "unknown"),
+                        "used_memory": info.get("used_memory_human", "unknown"),
+                        "used_memory_peak": info.get("used_memory_peak_human", "unknown"),
+                        "connected_clients": info.get("connected_clients", 0),
+                        "total_connections_received": info.get("total_connections_received", 0),
+                        "total_commands_processed": info.get("total_commands_processed", 0),
+                        "keyspace_hits": info.get("keyspace_hits", 0),
+                        "keyspace_misses": info.get("keyspace_misses", 0),
+                        "uptime_in_seconds": info.get("uptime_in_seconds", 0),
+                    })
+                    
+                    # Calcular hit rate
+                    hits = info.get("keyspace_hits", 0)
+                    misses = info.get("keyspace_misses", 0)
+                    total = hits + misses
+                    stats["hit_rate"] = (hits / total * 100) if total > 0 else 0.0
+                    
+                except Exception as info_error:
+                    logger.debug(f"No se pudo obtener INFO de Redis: {info_error}")
+            
+            return stats
         except Exception as e:
             logger.error(f"Error obteniendo estadísticas de caché: {e}")
             return {
@@ -380,9 +425,14 @@ class CacheRepository:
                 logger.error("Intento de flush_all en producción bloqueado")
                 return False
             
-            # TODO: Implementar FLUSHALL en Redis
-            logger.warning("Cache flush_all ejecutado")
-            return True
+            # Ejecutar FLUSHDB en Redis (solo la DB actual, no todas)
+            if self.client.client:
+                await self.client.client.flushdb(asynchronous=False)
+                logger.warning("Cache flush_all ejecutado exitosamente")
+                return True
+            
+            logger.warning("Cache flush_all: cliente no conectado")
+            return False
         except Exception as e:
             logger.error(f"Error en flush_all: {e}")
             return False

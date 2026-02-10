@@ -141,13 +141,19 @@ class UsageAnalyzer:
                 structure_match,
                 op_name
             )
+            
+            # Extraer ejemplos del código para esta operación
+            examples = self._extract_operation_examples(
+                structure_match.operations,
+                op_name
+            )
 
             op_frequencies.append(
                 OperationFrequency(
                     operation=op_name,
                     count=count,
                     complexity=complexity,
-                    examples=[]  # TODO: extraer ejemplos del código
+                    examples=examples
                 )
             )
 
@@ -397,6 +403,46 @@ class UsageAnalyzer:
                 )
 
         return recommendations
+    
+    def _extract_operation_examples(
+        self,
+        operations: List[str],
+        operation_name: str,
+        max_examples: int = 3
+    ) -> List[str]:
+        """
+        Extrae ejemplos del código para una operación específica.
+        
+        Args:
+            operations: Lista de operaciones detectadas (strings)
+            operation_name: Nombre de la operación a buscar
+            max_examples: Máximo número de ejemplos a extraer
+        
+        Returns:
+            Lista de strings con ejemplos del código
+        """
+        examples = []
+        
+        for op in operations:
+            # Las operaciones tienen formato "Tipo: detalle"
+            # Por ejemplo: "Acceso: A[i]", "Iteración: for i ← 1 to n"
+            if ":" in op:
+                op_type, op_detail = op.split(":", 1)
+                op_type = op_type.strip()
+                op_detail = op_detail.strip()
+                
+                if op_type.lower() == operation_name.lower():
+                    examples.append(op_detail)
+                    if len(examples) >= max_examples:
+                        break
+            else:
+                # Si no tiene formato, buscar coincidencia directa
+                if operation_name.lower() in op.lower():
+                    examples.append(op)
+                    if len(examples) >= max_examples:
+                        break
+        
+        return examples
 
     def _complexity_order(self, complexity: str) -> int:
         """Ordena complejidades para comparación"""

@@ -48,9 +48,8 @@ class BigOAnalyzer(BaseComplexityAnalyzer):
             return "1"  # O(1)
         
         elif isinstance(node, CallStatementNode):
-            # Por ahora, asumimos O(1)
-            # TODO: Analizar la complejidad de la función llamada
-            return "1"
+            # Analizar la complejidad de la función llamada
+            return self._analyze_call(node)
         
         else:
             return "1"
@@ -77,30 +76,109 @@ class BigOAnalyzer(BaseComplexityAnalyzer):
         """
         Calcula el número de iteraciones de un loop.
         
-        Por ahora, asumimos que es O(n).
-        TODO: Analizar start y end para determinar la complejidad exacta.
+        Analiza start y end para determinar la complejidad exacta.
         """
         # Si start y end son literales, podemos calcular exactamente
         if isinstance(start, LiteralNode) and isinstance(end, LiteralNode):
             start_val = start.value
             end_val = end.value
             iterations = end_val - start_val + 1
-            return str(iterations)
+            # Si es un número pequeño constante, devolver como constante
+            if iterations <= 10:
+                return str(iterations)
+            return "n"  # Número grande se considera O(n)
         
-        # Si end es una variable (ej: n), asumir O(n)
+        # Si end es un identificador
+        if isinstance(end, VariableNode):
+            name = end.name.lower()
+            # Variables comunes que representan tamaño
+            if name in ('n', 'm', 'size', 'length', 'len', 'count'):
+                return "n"
+            # Si es una variable diferente, asumimos O(n) también
+            return "n"
+        
+        # Si end es una expresión binaria (ej: n-1, n/2, n*n)
+        if isinstance(end, BinaryOpNode):
+            op = end.operator
+            # Operaciones que reducen: n-1, n-k -> O(n)
+            if op == "-":
+                return "n"
+            # Operaciones que dividen: n/2, n/k -> O(log n)? No, sigue siendo O(n) iteraciones
+            if op == "/" or op == "//":
+                # El loop sigue siendo lineal en términos del valor final
+                return "n"
+            # Operaciones que multiplican: n*n -> O(n^2)
+            if op == "*":
+                left = self._extract_term(end.left)
+                right = self._extract_term(end.right)
+                if left == "n" and right == "n":
+                    return "n^2"
+                return "n"
+        
+        # Por defecto, asumir O(n)
         return "n"
+    
+    def _extract_term(self, expr) -> str:
+        """Extrae el término principal de una expresión"""
+        if isinstance(expr, VariableNode):
+            return expr.name.lower()
+        if isinstance(expr, LiteralNode):
+            return str(expr.value)
+        return "n"  # Default
     
     def _analyze_while_loop(self, node: WhileLoopNode) -> str:
         """
         Analiza un WHILE loop.
         
         Más complejo porque depende de la condición.
-        Por ahora, asumimos O(n).
+        Analiza la condición para determinar iteraciones.
         """
         body_complexity = self.analyze_node(node.body)
         
-        # TODO: Analizar la condición para determinar iteraciones
-        return self.combine_nested("n", body_complexity)
+        # Analizar la condición para determinar iteraciones
+        iterations = self._analyze_while_condition(node.condition)
+        
+        return self.combine_nested(iterations, body_complexity)
+    
+    def _analyze_while_condition(self, condition) -> str:
+        """
+        Analiza la condición de un WHILE para estimar iteraciones.
+        
+        Heurísticas comunes:
+        - i < n, i <= n -> O(n)
+        - i < n*n, i <= n^2 -> O(n^2)  
+        - i > 0, i >= 1 con i = i/2 -> O(log n)
+        """
+        if not isinstance(condition, BinaryOpNode):
+            return "n"  # Default conservador
+        
+        op = condition.operator
+        left = condition.left
+        right = condition.right
+        
+        # Patrones de comparación: i < n, i <= n, i != n
+        if op in ('<', '<=', '>', '>=', '!='):
+            # Si el lado derecho es un identificador de tamaño
+            if isinstance(right, VariableNode):
+                name = right.name.lower()
+                if name in ('n', 'm', 'size', 'length'):
+                    return "n"
+            
+            # Si el lado derecho es una expresión multiplicativa
+            if isinstance(right, BinaryOpNode) and right.operator == '*':
+                left_term = self._extract_term(right.left)
+                right_term = self._extract_term(right.right)
+                if left_term == "n" and right_term == "n":
+                    return "n^2"
+            
+            # Si el lado izquierdo > 0 (patrón de división)
+            if isinstance(right, LiteralNode):
+                if right.value in (0, 1):
+                    # Podría ser un patrón logarítmico (i = i/2)
+                    # Pero sin analizar el cuerpo, asumimos O(n) para ser conservador
+                    return "n"
+        
+        return "n"  # Default conservador
     
     def _analyze_repeat_loop(self, node: RepeatLoopNode) -> str:
         """Analiza un REPEAT loop (similar a WHILE)"""
@@ -126,3 +204,54 @@ class BigOAnalyzer(BaseComplexityAnalyzer):
             return self.combine_sequential(complexities)
         
         return then_complexity
+    
+    def _analyze_call(self, node: CallStatementNode) -> str:
+        """
+        Analiza la complejidad de una llamada a función.
+        
+        Heurísticas:
+        - Funciones conocidas tienen complejidad conocida
+        - Funciones con argumentos de tamaño n: O(n) conservador
+        - Sin más información: O(1)
+        """
+        func_name = node.function_name.lower()
+        
+        # Funciones comunes con complejidad conocida
+        known_functions = {
+            # O(1) - Acceso/operaciones simples
+            'print': '1', 'println': '1', 'write': '1', 'read': '1',
+            'push': '1', 'pop': '1', 'top': '1', 'peek': '1',
+            'enqueue': '1', 'dequeue': '1', 'front': '1',
+            'min': '1', 'max': '1', 'abs': '1', 'floor': '1', 'ceil': '1',
+            'length': '1', 'size': '1', 'count': '1', 'empty': '1',
+            'get': '1', 'set': '1', 'insert': '1', 'delete': '1',
+            
+            # O(n) - Operaciones lineales
+            'copy': 'n', 'clone': 'n', 'reverse': 'n', 'fill': 'n',
+            'find': 'n', 'search': 'n', 'contains': 'n', 'indexof': 'n',
+            'sum': 'n', 'average': 'n', 'mean': 'n',
+            
+            # O(n log n) - Ordenamiento
+            'sort': 'n log n', 'quicksort': 'n log n', 'mergesort': 'n log n',
+            'heapsort': 'n log n', 'timsort': 'n log n',
+            
+            # O(n^2) - Ordenamiento cuadrático
+            'bubblesort': 'n^2', 'insertionsort': 'n^2', 'selectionsort': 'n^2',
+            
+            # O(log n) - Búsqueda binaria
+            'binarysearch': 'log n', 'bisect': 'log n',
+        }
+        
+        if func_name in known_functions:
+            return known_functions[func_name]
+        
+        # Si el nombre sugiere una operación de ordenamiento
+        if 'sort' in func_name:
+            return 'n log n'
+        
+        # Si el nombre sugiere búsqueda
+        if 'search' in func_name or 'find' in func_name:
+            return 'n'
+        
+        # Por defecto, asumir O(1) para funciones auxiliares simples
+        return "1"

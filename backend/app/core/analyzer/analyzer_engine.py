@@ -240,8 +240,8 @@ class AnalyzerEngine:
             if not is_recursive:
                 is_recursive = self._detect_recursion_simple(ast)
             
-            # TODO: Calcular profundidad de anidación
-            max_nesting_depth = 0
+            # Calcular profundidad de anidación
+            max_nesting_depth = self._calculate_nesting_depth(ast.algorithm.body)
             
             # Crear resultado
             result = AnalysisResult(
@@ -366,6 +366,86 @@ class AnalyzerEngine:
         return complexity_str.replace("O(", "").replace(")", "").replace("Θ(", "").replace("Ω(", "")
     
     def _detect_recursion_simple(self, ast: ProgramNode) -> bool:
-        """Detección simple de recursión (fallback)"""
-        # TODO: Implementar detección más robusta
-        return False
+        """Detección robusta de recursión"""
+        from app.core.parser.ast_nodes import (
+            BlockNode, CallStatementNode, ForLoopNode, 
+            WhileLoopNode, IfStatementNode, RepeatLoopNode
+        )
+        
+        algorithm_name = ast.algorithm.name
+        
+        def check_node(node) -> bool:
+            """Revisa un nodo recursivamente buscando llamadas al algoritmo"""
+            if node is None:
+                return False
+            
+            if isinstance(node, CallStatementNode):
+                if node.function_name == algorithm_name:
+                    return True
+            
+            elif isinstance(node, BlockNode):
+                for stmt in node.statements:
+                    if check_node(stmt):
+                        return True
+            
+            elif isinstance(node, ForLoopNode):
+                if check_node(node.body):
+                    return True
+            
+            elif isinstance(node, WhileLoopNode):
+                if check_node(node.body):
+                    return True
+            
+            elif isinstance(node, RepeatLoopNode):
+                for stmt in node.body:
+                    if check_node(stmt):
+                        return True
+            
+            elif isinstance(node, IfStatementNode):
+                if check_node(node.then_block):
+                    return True
+                if node.else_block and check_node(node.else_block):
+                    return True
+            
+            return False
+        
+        return check_node(ast.algorithm.body)
+    
+    def _calculate_nesting_depth(self, node, current_depth: int = 0) -> int:
+        """Calcula la profundidad máxima de anidación de estructuras de control"""
+        from app.core.parser.ast_nodes import (
+            BlockNode, ForLoopNode, WhileLoopNode, 
+            IfStatementNode, RepeatLoopNode
+        )
+        
+        if node is None:
+            return current_depth
+        
+        max_depth = current_depth
+        
+        if isinstance(node, BlockNode):
+            for stmt in node.statements:
+                depth = self._calculate_nesting_depth(stmt, current_depth)
+                max_depth = max(max_depth, depth)
+        
+        elif isinstance(node, (ForLoopNode, WhileLoopNode)):
+            # Incrementar profundidad para loops
+            body_depth = self._calculate_nesting_depth(node.body, current_depth + 1)
+            max_depth = max(max_depth, body_depth)
+        
+        elif isinstance(node, RepeatLoopNode):
+            # Incrementar profundidad para repeat
+            for stmt in node.body:
+                depth = self._calculate_nesting_depth(stmt, current_depth + 1)
+                max_depth = max(max_depth, depth)
+        
+        elif isinstance(node, IfStatementNode):
+            # Incrementar profundidad para if
+            then_depth = self._calculate_nesting_depth(node.then_block, current_depth + 1)
+            max_depth = max(max_depth, then_depth)
+            
+            if node.else_block:
+                else_depth = self._calculate_nesting_depth(node.else_block, current_depth + 1)
+                max_depth = max(max_depth, else_depth)
+        
+        return max_depth
