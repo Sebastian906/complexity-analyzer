@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.infrastructure.agents.base_agent import BaseAgent, AgentState
 from app.infrastructure.llm.base_llm import BaseLLM
@@ -8,8 +8,8 @@ from app.infrastructure.llm.prompt_templates import COMPLEXITY_VALIDATION_PROMPT
 class ComplexityAgent(BaseAgent):
     """Agente especializado en análisis de complejidad"""
     
-    def __init__(self, llm: BaseLLM):
-        super().__init__(llm, "ComplexityAgent")
+    def __init__(self, llm: BaseLLM, fallback_llm: Optional[BaseLLM] = None):
+        super().__init__(llm, "ComplexityAgent", fallback_llm=fallback_llm)
         self.analyzer = AnalyzerEngine()
     
     async def execute(self, state: AgentState) -> AgentState:
@@ -66,7 +66,7 @@ class ComplexityAgent(BaseAgent):
         )
 
         try:
-            return await self.llm.generate_json(prompt)
+            return await self.llm.generate_with_fallback(prompt, fallback_llm=self.fallback_llm)
         except Exception as e:
             self.logger.warning(f"Error en validación LLM: {e}")
             return {

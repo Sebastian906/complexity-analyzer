@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     GEMINI_TEMPERATURE: float = 0.0
     
     # Configuración LLM
-    PRIMARY_LLM: Literal["claude", "gemini"] = "claude"
-    FALLBACK_LLM: Literal["claude", "gemini"] = "gemini"
+    PRIMARY_LLM: Literal["claude", "gemini"] = "gemini"
+    FALLBACK_LLM: Literal["claude", "gemini"] = "claude"
     LLM_TIMEOUT: int = 30
     LLM_MAX_RETRIES: int = 3
     LLM_RETRY_DELAY: int = 2

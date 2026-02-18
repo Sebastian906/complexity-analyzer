@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.infrastructure.agents.base_agent import BaseAgent, AgentState
 from app.infrastructure.llm.base_llm import BaseLLM
@@ -6,8 +6,8 @@ from app.infrastructure.llm.base_llm import BaseLLM
 class ValidationAgent(BaseAgent):
     """Agente especializado en validación final"""
     
-    def __init__(self, llm: BaseLLM):
-        super().__init__(llm, "ValidationAgent")
+    def __init__(self, llm: BaseLLM, fallback_llm: Optional[BaseLLM] = None):
+        super().__init__(llm, "ValidationAgent", fallback_llm=fallback_llm)
     
     async def execute(self, state: AgentState) -> AgentState:
         """Validar resultados completos"""
@@ -92,7 +92,7 @@ Responde SOLO en formato JSON:
 }}"""
         
         try:
-            return await self.llm.generate_json(prompt)
+            return await self.llm.generate_with_fallback(prompt, fallback_llm=self.fallback_llm)
         except Exception as e:
             self.logger.warning(f"Error en validación LLM: {e}")
             return {"is_valid": True, "issues": []}

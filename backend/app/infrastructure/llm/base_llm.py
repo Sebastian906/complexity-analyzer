@@ -45,3 +45,37 @@ class BaseLLM(ABC):
     ) -> Dict[str, Any]:
         """Generar respuesta en formato JSON"""
         pass
+
+    async def generate_with_fallback(
+        self,
+        prompt: str,
+        fallback_llm: Optional['BaseLLM'] = None, 
+        system_prompt: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Intenta generate_json con este LLM; si falla usa fallback_llm.
+        Aplica timeout desde settings si está disponible.
+        """
+        import asyncio
+        try:
+            from app.core.config import settings
+            timeout = getattr(settings, 'LLM_TIMEOUT', 30)
+        except Exception:
+            timeout = 30
+
+        try:
+            return await asyncio.wait_for(
+                self.generate_json(prompt, system_prompt, **kwargs),
+                timeout=timeout
+            )
+        except Exception as primary_error:
+            if fallback_llm is not None:
+                try:
+                    return await asyncio.wait_for(
+                        fallback_llm.generate_json(prompt, system_prompt, **kwargs),
+                        timeout=timeout
+                    )
+                except Exception:
+                    pass
+            raise primary_error
