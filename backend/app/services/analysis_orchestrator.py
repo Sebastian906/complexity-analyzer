@@ -4,7 +4,7 @@ Analysis Orchestrator - Orquestación de Análisis Completo
 Coordina todos los módulos de análisis (Parser, Analyzer, Patterns, Structures, Visualization)
 para proporcionar un análisis completo de algoritmos en un solo flujo.
 """
-
+from __future__ import annotations
 import time
 from datetime import datetime
 from typing import Optional
@@ -63,9 +63,12 @@ from app.schemas import (
 )
 from app.utils.logger import setup_logger
 
-# ========== PROFILING IMPORT ==========
 from app.profiling import get_performance_monitor
-# ======================================
+
+# Import TYPE_CHECKING: solo para anotaciones, no genera importación circular
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.infrastructure.agents.coordinator_agent import CoordinatorAgent
 
 logger = setup_logger(__name__)
 
@@ -126,7 +129,20 @@ class AnalysisOrchestrator:
         """
         logger.info("Iniciando análisis completo")
 
-        # ========== PROFILING: Monitorear análisis completo ==========
+        # FEATURE FLAG: Sistema multiagente
+        if settings.ENABLE_MULTIAGENT_SYSTEM:
+            try:
+                # Lazy import para evitar circular imports
+                from app.infrastructure.agents.coordinator_agent import CoordinatorAgent
+                logger.info('Delegado al sistema multiagente (LangGraph)')
+                coordinator = CoordinatorAgent(use_llm=True)
+                agent_result = await coordinator.execute_pipeline(request.code)
+                return self._map_agent_result(agent_result, request)
+            except Exception as e:
+                logger.error(f'Error en sistemas multiagente: {e}. Usando análisis directo.')
+                # Fallback automático al análisis directo si el pipeline falla
+
+        # PROFILING: Monitorear análisis completo
         if self.profiling_enabled and self.monitor:
             with self.monitor.monitor("analyze_complete", module="orchestrator") as metrics:
                 result = await self._execute_analysis(request)
@@ -141,7 +157,6 @@ class AnalysisOrchestrator:
                 return result
         else:
             return await self._execute_analysis(request)
-        # =============================================================
 
     async def _execute_analysis(
         self,
@@ -979,3 +994,85 @@ class AnalysisOrchestrator:
         }
 
         return mapping.get(clean, ComplexityClass.POLYNOMIAL)
+    
+    def _map_agent_result(
+        self,
+        agent_result: dict,
+        request: CompleteAnalysisRequest
+    ) -> CompleteAnalysisRequest:
+        """
+        Convierte el dict de CoordinatorAgent al schema CompleteAnalysisResult.
+
+        El pipeline de agentes devuelve con claves:
+            success, algorithm_name, complexity, patterns,
+            structures, validation, errors
+        Este método lo adapta al schema que usan los endpoints de la API
+        """
+        from datetime import datetime
+        started_at = datetime.utcnow()
+        start_time = __import__('time').time()
+        errors = [e.get('error', str(e)) if isinstance(e, dict) else str(e)
+                  for e in agent_result.get('errors', [])]
+        warnings = []
+
+        # Complejidad
+        complexity_schema = None
+        raw_complexity = agent_result.get('complexity') or {}
+        if raw_complexity.get('big_o'):
+            complexity_schema = ComplexityAnalysis(
+                big_o=raw_complexity.get('big_o', 'O(?)'),
+                omega=raw_complexity.get('omega', 'Ω(?)'),
+                theta=raw_complexity.get('theta'),
+                big_o_class=self._get_complexity_class(raw_complexity.get('big_o', '')),
+                omega_class=self._get_complexity_class(raw_complexity.get('omega', '')),
+                theta_class=self._get_complexity_class(raw_complexity.get('theta', '')),
+                explanation='Complejidad validada por sistema multiagente',
+                reasoning=[
+                    'Analisís realizado por ComplexityAgent',
+                    f"Validación LLM: {raw_complexity.get('llm_validation', {}).get('big_o', 'N/A')}"
+                ],
+                has_tight_bound=raw_complexity.get('theta') is not None,
+            )
+
+        # Patrones
+        patterns_schema = None
+        raw_patterns = agent_result.get('patterns') or {}
+        if raw_patterns.get('primary_pattern'):
+            # Reutilizar _detect_patterns si tenemos el AST disponible,
+            # o construir un PatternDetectionResult mínimo desde el dict.
+            from app.schemas import PatternDetectionResult as PDR
+            patterns_schema = PDR(
+                patterns_found=[],
+                scored_patterns=[],
+                primary_pattern=None,
+                confident_patterns=[],
+                summary=raw_patterns.get('summary', ''),
+                pattern_count=len(raw_patterns.get('all_patterns', [])),
+                metadata={'source': 'multiagent'},
+            )
+
+        # Estructuras
+        structures_schema = None
+        raw_structures = agent_result.get('structures') or {}
+        if raw_structures.get('primary_structure'):
+            from app.schemas import StructureDetectionResult as SDR
+            structures_schema = SDR(
+                structures_found=[],
+                primary_structure=None,
+                primary_usage=None,
+                summary=raw_structures.get('summary', ''),
+            )
+
+        algorithm_name = agent_result.get('algorithm_name') or 'unknown'
+
+        return self._create_result(
+            started_at=started_at,
+            start_time=start_time,
+            algorithm_name=algorithm_name,
+            algorithm_info=None,   # No disponible desde pipeline de agentes
+            complexity=complexity_schema,
+            patterns=patterns_schema,
+            structures=structures_schema,
+            errors=errors,
+            warnings=warnings,
+        )

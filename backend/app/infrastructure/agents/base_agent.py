@@ -26,9 +26,10 @@ class AgentState:
 class BaseAgent(ABC):
     """Agente base abstracto"""
 
-    def __init__(self, llm: BaseLLM, name: str):
+    def __init__(self, llm: BaseLLM, name: str, fallback_llm: Optional[BaseLLM] = None):
         self.llm = llm
         self.name = name
+        self.fallback_llm = fallback_llm
         self.logger = get_logger(f"agent.{name}")
 
     @abstractmethod

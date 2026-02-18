@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.infrastructure.agents.base_agent import BaseAgent, AgentState
 from app.infrastructure.llm.base_llm import BaseLLM
@@ -8,8 +8,8 @@ from app.infrastructure.llm.prompt_templates import PATTERN_DETECTION_PROMPT
 class PatternAgent(BaseAgent):
     """Agente especializado en detección de patrones"""
     
-    def __init__(self, llm: BaseLLM):
-        super().__init__(llm, "PatternAgent")
+    def __init__(self, llm: BaseLLM, fallback_llm: Optional[BaseLLM] = None):
+        super().__init__(llm, "PatternAgent", fallback_llm=fallback_llm)
         self.detector = PatternDetector()
     
     async def execute(self, state: AgentState) -> AgentState:
@@ -65,7 +65,7 @@ class PatternAgent(BaseAgent):
         )
         
         try:
-            return await self.llm.generate_json(prompt)
+            return await self.llm.generate_with_fallback(prompt, fallback_llm=self.fallback_llm)
         except Exception as e:
             self.logger.warning(f"Error en detección LLM: {e}")
             return {
