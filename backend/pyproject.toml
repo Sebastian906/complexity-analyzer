@@ -122,6 +122,12 @@ markers = [
     "e2e: marca tests end-to-end",
     "slow: marca tests lentos",
     "llm: marca tests que usan LLMs (pueden consumir créditos)",
+    "contract: marca tests de contrato (API contracts)",
+    "smoke: marca tests de humo (smoke tests)",
+    "load: marca tests de carga y rendimiento",
+    "blackbox: marca tests de caja negra",
+    "whitebox: marca tests de caja blanca",
+    "regression: marca tests de regresión",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"

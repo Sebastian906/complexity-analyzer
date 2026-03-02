@@ -425,6 +425,30 @@ def pytest_configure(config):
         "markers",
         "llm: marca tests que usan LLMs reales (pueden consumir créditos)"
     )
+    config.addinivalue_line(
+        "markers",
+        "contract: marca tests de contrato (API contracts)"
+    )
+    config.addinivalue_line(
+        "markers",
+        "smoke: marca tests de humo (smoke tests)"
+    )
+    config.addinivalue_line(
+        "markers",
+        "load: marca tests de carga y rendimiento"
+    )
+    config.addinivalue_line(
+        "markers",
+        "blackbox: marca tests de caja negra"
+    )
+    config.addinivalue_line(
+        "markers",
+        "whitebox: marca tests de caja blanca"
+    )
+    config.addinivalue_line(
+        "markers",
+        "regression: marca tests de regresión"
+    )
 
 def pytest_collection_modifyitems(config, items):
     """Hook: Modificar items recolectados antes de ejecutar"""
@@ -436,6 +460,18 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
         elif "e2e" in str(item.fspath):
             item.add_marker(pytest.mark.e2e)
+        elif "contract" in str(item.fspath):
+            item.add_marker(pytest.mark.contract)
+        elif "smoke" in str(item.fspath):
+            item.add_marker(pytest.mark.smoke)
+        elif "load" in str(item.fspath):
+            item.add_marker(pytest.mark.load)
+        elif "blackbox" in str(item.fspath):
+            item.add_marker(pytest.mark.blackbox)
+        elif "whitebox" in str(item.fspath):
+            item.add_marker(pytest.mark.whitebox)
+        elif "regression" in str(item.fspath):
+            item.add_marker(pytest.mark.regression)
 
 # Utilities para Tests
 class Helpers:
