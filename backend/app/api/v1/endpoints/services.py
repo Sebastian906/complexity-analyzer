@@ -51,8 +51,11 @@ from app.services import (
     ValidationService,
     ExportService,
     CacheService,
+    CacheKey,
+    generate_cache_key,
     get_cache_service,
 )
+from app.core.config import settings
 from app.schemas import StatusEnum
 from app.utils.logger import setup_logger
 
@@ -286,11 +289,24 @@ async def analyze_complete(request: CompleteAnalysisRequest):
     - Generación de visualizaciones
     """
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(
+            CacheKey.ANALYSIS, request.code, analysis_type="orchestrator_complete"
+        )
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para análisis completo (orchestrator)")
+            return _cached
+
         result = await analysis_orchestrator.analyze_complete(request)
 
         # Incrementar contador si tiene algorithm_id
         if hasattr(request, 'algorithm_id') and request.algorithm_id:
             await algorithm_service.increment_analysis_count(request.algorithm_id)
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, result, ttl=settings.CACHE_TTL_ANALYSIS)
 
         return result
 
@@ -388,6 +404,16 @@ async def analyze_batch(request: BatchAnalysisRequest):
 async def analyze_quick(request: QuickAnalysisRequest):
     """Análisis rápido simplificado"""
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(
+            CacheKey.ANALYSIS, request.code, analysis_type="orchestrator_quick"
+        )
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para análisis rápido (orchestrator)")
+            return _cached
+
         from app.schemas.analysis_request import AnalysisType
         
         # Crear request con análisis básico (solo complejidad)
@@ -417,7 +443,7 @@ async def analyze_quick(request: QuickAnalysisRequest):
         # Generar resumen
         summary = f"Complejidad temporal: {big_o}, espacial: {space_complexity}"
         
-        return QuickAnalysisResult(
+        _result = QuickAnalysisResult(
             success=True,
             message="Análisis rápido completado",
             algorithm_name=algorithm_name,
@@ -428,6 +454,11 @@ async def analyze_quick(request: QuickAnalysisRequest):
             primary_pattern=primary_pattern,
             summary=summary
         )
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_ANALYSIS)
+
+        return _result
     except Exception as e:
         logger.error(f"Error en análisis rápido: {e}")
         raise HTTPException(

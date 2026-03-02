@@ -28,6 +28,8 @@ from app.core.data_structures import (
     UsageAnalyzer
 )
 from app.utils.logger import setup_logger
+from app.services.cache_service import CacheKey, generate_cache_key, get_cache_service
+from app.core.config import settings
 
 logger = setup_logger(__name__)
 
@@ -55,6 +57,19 @@ async def detect_structures(request: StructureDetectionRequest):
     - Tablas Hash
     """
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(
+            CacheKey.STRUCTURE,
+            request.code,
+            min_confidence=request.options.min_confidence,
+            analyze_usage=request.options.analyze_usage,
+        )
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para detección de estructuras")
+            return _cached
+
         logger.info("Recibida solicitud de detección de estructuras")
 
         # 1. Parsear el código
@@ -128,12 +143,17 @@ async def detect_structures(request: StructureDetectionRequest):
             except Exception as e:
                 logger.warning(f"Error analizando uso: {e}")
 
-        return StructureDetectionResult(
+        _result = StructureDetectionResult(
             structures_found=structures_found,
             primary_structure=primary_structure,
             primary_usage=primary_usage,
             summary=result.summary,
         )
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_ANALYSIS)
+
+        return _result
 
     except Exception as e:
         logger.error(f"Error en detección de estructuras: {e}", exc_info=True)

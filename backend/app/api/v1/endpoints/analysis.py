@@ -40,6 +40,7 @@ from app.core.config import settings
 from app.utils.logger import setup_logger
 
 from app.profiling import get_performance_monitor
+from app.services.cache_service import CacheKey, generate_cache_key, get_cache_service
 
 logger = setup_logger(__name__)
 
@@ -107,6 +108,22 @@ async def analyze_complexity_complete(request: ComplexityAnalysisRequest):
 async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
     """Implementación interna del endpoint."""
     try:
+        # Cache: verificar si ya existe resultado en caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(
+            CacheKey.ANALYSIS,
+            request.code,
+            analysis_type="complete",
+            line_by_line=request.options.analyze_line_by_line if request.options else True,
+            spatial=request.options.analyze_spatial if request.options else True,
+            recurrence=request.options.analyze_recurrence if request.options else True,
+            tight_bounds=request.options.calculate_tight_bounds if request.options else True,
+        )
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para análisis completo")
+            return _cached
+
         logger.info("Recibida solicitud de análisis completo")
 
         # 1. Parsear el código
@@ -261,7 +278,7 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
         """.strip()
 
         # 11. Construir resultado completo
-        return CompleteAnalysisResult(
+        _result = CompleteAnalysisResult(
             success=True,
             message="Análisis completado exitosamente",
             timestamp=datetime.now(timezone.utc),
@@ -282,6 +299,11 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
                 "Verificar uso de memoria para grandes entradas",
             ],
         )
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_ANALYSIS)
+
+        return _result
 
     except Exception as e:
         logger.error(f"Error en análisis: {e}", exc_info=True)
@@ -310,6 +332,14 @@ async def analyze_quick(code: str = Query(..., description="Código a analizar")
 async def _analyze_quick_impl(code: str):
     """Implementación interna de quick analysis."""
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(CacheKey.ANALYSIS, code, analysis_type="quick")
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para análisis rápido")
+            return _cached
+
         logger.info("Recibida solicitud de análisis rápido")
         
         parser = PseudocodeParser()
@@ -319,12 +349,17 @@ async def _analyze_quick_impl(code: str):
         analyzer = BigOAnalyzer()
         big_o = analyzer.analyze(ast)
         
-        return {
+        _result = {
             "success": True,
             "big_o": big_o,
             "algorithm_name": ast.algorithm.name,
             "message": "Análisis rápido completado"
         }
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_ANALYSIS)
+
+        return _result
     except Exception as e:
         logger.error(f"Error en análisis rápido: {e}")
         raise HTTPException(
@@ -383,6 +418,14 @@ async def analyze_line_by_line(
 async def _analyze_line_by_line_impl(code: str):
     """Implementación interna de line by line."""
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(CacheKey.ANALYSIS, code, analysis_type="line_by_line")
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para análisis línea por línea")
+            return _cached
+
         logger.info("Recibida solicitud de análisis línea por línea")
         
         parser = PseudocodeParser()
@@ -406,13 +449,18 @@ async def _analyze_line_by_line_impl(code: str):
                 "explanation": line.explanation
             })
         
-        return {
+        _result = {
             "success": True,
             "algorithm_name": ast.algorithm.name,
             "lines": lines_data,
             "total_lines": len(lines_data),
             "message": "Análisis línea por línea completado"
         }
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_ANALYSIS)
+
+        return _result
     except Exception as e:
         logger.error(f"Error en análisis línea por línea: {e}")
         raise HTTPException(
