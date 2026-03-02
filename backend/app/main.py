@@ -224,14 +224,16 @@ async def profiling_middleware(request: Request, call_next):
     
     return response
 
-# Middleware de timing de requests
+# Middleware de timing de requests (fallback para producción)
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    """Agrega header con tiempo de procesamiento"""
+    """Agrega header con tiempo de procesamiento (solo si no fue establecido por profiling)"""
     start_time = time.time()
     response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = f"{process_time:.4f}"
+    # Solo agregar si no fue establecido por profiling_middleware (evitar duplicado)
+    if "X-Process-Time" not in response.headers:
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = f"{process_time:.4f}"
     return response
 
 # Middleware de logging de requests

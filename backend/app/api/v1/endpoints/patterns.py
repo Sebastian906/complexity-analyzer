@@ -21,6 +21,8 @@ from app.schemas import (
 from app.core.parser import PseudocodeParser
 from app.core.patterns import PatternDetector
 from app.utils.logger import setup_logger
+from app.services.cache_service import CacheKey, generate_cache_key, get_cache_service
+from app.core.config import settings
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -51,6 +53,18 @@ async def detect_patterns(request: PatternDetectionRequest):
     - Algoritmos de Aproximación
     """
     try:
+        # Cache: verificar caché
+        _cache = get_cache_service()
+        _cache_key = generate_cache_key(
+            CacheKey.PATTERN,
+            request.code,
+            min_confidence=request.options.min_confidence,
+        )
+        _cached = await _cache.get(_cache_key)
+        if _cached is not None:
+            logger.info("Cache HIT para detección de patrones")
+            return _cached
+
         logger.info("Recibida solicitud de detección de patrones")
 
         # 1. Parsear el código
@@ -168,7 +182,7 @@ async def detect_patterns(request: PatternDetectionRequest):
         high_conf_count = len([p for p in patterns_found if p.confidence >= 0.7])
 
         # 9. Retornar usando campos explícitos
-        return PatternDetectionResult(
+        _result = PatternDetectionResult(
             patterns_found=patterns_found,
             scored_patterns=scored_patterns,
             primary_pattern=primary_pattern,
@@ -179,6 +193,11 @@ async def detect_patterns(request: PatternDetectionRequest):
             statistics=statistics,
             metadata=getattr(result, 'metadata', {}),  
         )
+
+        # Cache: almacenar resultado
+        await _cache.set(_cache_key, _result, ttl=settings.CACHE_TTL_PATTERN)
+
+        return _result
 
     except Exception as e:
         logger.error(f"Error en detección de patrones: {e}", exc_info=True)
