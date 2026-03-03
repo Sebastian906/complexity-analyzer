@@ -69,6 +69,17 @@ async def create_algorithm(
         )
 
 @router.get(
+    "/statistics",
+    summary="Obtener Estadísticas",
+    description="Obtiene estadísticas de algoritmos almacenados en MongoDB"
+)
+async def get_statistics(
+    service: AlgorithmService = Depends(get_algorithm_service)
+):
+    """Obtiene estadísticas de algoritmos"""
+    return service.get_statistics()
+
+@router.get(
     "/{algorithm_id}",
     response_model=AlgorithmResponse,
     summary="Obtener Algoritmo",
@@ -168,13 +179,3 @@ async def search_algorithms(
     """Busca algoritmos con criterios avanzados"""
     return await service.search(criteria)
 
-@router.get(
-    "/statistics",
-    summary="Obtener Estadísticas",
-    description="Obtiene estadísticas de algoritmos almacenados en MongoDB"
-)
-async def get_statistics(
-    service: AlgorithmService = Depends(get_algorithm_service)
-):
-    """Obtiene estadísticas de algoritmos"""
-    return await service.get_statistics()

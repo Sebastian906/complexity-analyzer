@@ -15,6 +15,10 @@ Endpoints testeados:
 - POST /api/v1/structures/detect - Detectar estructuras
 - POST /api/v1/export - Exportar resultados
 - POST /api/v1/validation/validate - Validar código
+- GET /api/v1/health/profiling - Estadísticas de profiling
+- POST /api/v1/health/profiling/export - Exportar reporte profiling
+- POST /api/v1/health/profiling/reset - Reiniciar stats profiling
+- GET /api/v1/health/status - Estado detallado del sistema
 """
 
 import pytest
@@ -301,6 +305,15 @@ class TestAlgorithmsEndpoints:
         assert "algorithms" in data
         for algo in data["algorithms"]:
             assert algo["category"] == "sorting"
+
+    def test_get_statistics(self, client):
+        """GET /api/v1/algorithms/statistics debe retornar estadísticas"""
+        response = client.get("/api/v1/algorithms/statistics")
+        
+        assert response.status_code == 200
+        data = response.json()
+        # Verificar que no sea un error 404 confundiendo con algorithm_id
+        assert data.get("error") is None or data.get("success", True) is True
 
 # TESTS: Analysis Endpoints
 class TestAnalysisEndpoints:
@@ -1012,6 +1025,58 @@ class TestVisualizationsEndpoints:
         data = response.json()
         assert "type" in data
 
+# TESTS: Health/Profiling Endpoints
+class TestHealthProfilingEndpoints:
+    """Tests de endpoints de health y profiling"""
+    
+    def test_health_profiling_stats(self, client):
+        """GET /api/v1/health/profiling debe retornar estadísticas de profiling"""
+        response = client.get("/api/v1/health/profiling")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["enabled"] is True
+        assert "statistics" in data
+        assert "module_performance" in data
+        assert "top_slow_operations" in data
+        assert "top_memory_operations" in data
+        
+        # Verificar estructura de statistics
+        stats = data["statistics"]
+        assert "total_operations" in stats
+        assert "modules_monitored" in stats
+        assert "slow_operations_count" in stats
+        assert "memory_intensive_count" in stats
+    
+    def test_health_profiling_export(self, client):
+        """POST /api/v1/health/profiling/export debe exportar reporte"""
+        response = client.post("/api/v1/health/profiling/export")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "file_path" in data
+    
+    def test_health_profiling_reset(self, client):
+        """POST /api/v1/health/profiling/reset debe reiniciar stats"""
+        response = client.post("/api/v1/health/profiling/reset")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+    
+    def test_health_detailed_status(self, client):
+        """GET /api/v1/health/status debe retornar estado detallado"""
+        response = client.get("/api/v1/health/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "application" in data
+        assert "services" in data
+        assert "llms" in data
+
+
 # TESTS: Error Handling
 class TestErrorHandling:
     """Tests de manejo de errores"""
@@ -1034,6 +1099,14 @@ class TestErrorHandling:
         }
         
         response = client.post("/api/v1/algorithms", json=payload)
+        
+        # 422 = validación Pydantic rechazó el payload (esperado)
+        # 500 = fallo de conexión a MongoDB en el dependency (no concluyente)
+        if response.status_code == 500:
+            data = response.json()
+            error_msg = data.get("error", {}).get("details", "")
+            if "AutoReconnect" in str(error_msg) or "getaddrinfo" in str(error_msg):
+                pytest.skip("MongoDB no disponible - no se pudo validar")
         
         assert response.status_code == 422
     
