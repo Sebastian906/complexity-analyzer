@@ -117,14 +117,14 @@ async def profiling_stats():
         # Obtener todas las métricas
         all_metrics = monitor.get_metrics()
         
-        # Obtener operaciones lentas
-        slow_ops = monitor.get_slow_operations(threshold_seconds=1.0)
+        # Obtener operaciones lentas (1000ms = 1s)
+        slow_ops = monitor.get_slow_operations(threshold_ms=1000.0)
         
         # Obtener operaciones con alto uso de memoria
         memory_intensive = monitor.get_memory_intensive_operations(threshold_mb=50.0)
         
         # Obtener rendimiento por módulo
-        module_performance = monitor.get_module_performance()
+        module_performance = monitor.get_all_module_performance()
         
         # Construir estadísticas resumidas
         stats = {
@@ -136,15 +136,15 @@ async def profiling_stats():
         
         # Top 10 operaciones más lentas
         top_slow = sorted(
-            all_metrics.items(),
-            key=lambda x: x[1].duration_seconds,
+            all_metrics,
+            key=lambda m: m.execution_time_ms,
             reverse=True
         )[:10]
         
         # Top 10 operaciones con más memoria
         top_memory = sorted(
-            all_metrics.items(),
-            key=lambda x: x[1].memory_used_mb,
+            all_metrics,
+            key=lambda m: m.memory_delta_mb,
             reverse=True
         )[:10]
         
@@ -157,34 +157,30 @@ async def profiling_stats():
             "module_performance": {
                 module: {
                     "total_operations": perf.total_operations,
-                    "total_time_seconds": perf.total_time_seconds,
-                    "average_time_seconds": perf.average_time_seconds,
-                    "total_memory_mb": perf.total_memory_mb,
-                    "average_memory_mb": perf.average_memory_mb,
-                    "slowest_operation": perf.slowest_operation,
-                    "most_memory_intensive": perf.most_memory_intensive,
+                    "avg_execution_time_ms": perf.avg_execution_time_ms,
+                    "avg_memory_delta_mb": perf.avg_memory_delta_mb,
+                    "slow_operations_count": perf.slow_operations_count,
+                    "memory_leaks_count": perf.memory_leaks_count,
                 }
                 for module, perf in module_performance.items()
             },
             "top_slow_operations": [
                 {
-                    "name": name,
-                    "duration_seconds": metrics.duration_seconds,
-                    "duration_ms": metrics.duration_ms,
-                    "module": metrics.module,
-                    "performance_level": metrics.performance_level.value,
+                    "operation": m.operation,
+                    "execution_time_ms": m.execution_time_ms,
+                    "module": m.module,
+                    "performance_level": m.performance_level.value,
                 }
-                for name, metrics in top_slow
+                for m in top_slow
             ],
             "top_memory_operations": [
                 {
-                    "name": name,
-                    "memory_used_mb": metrics.memory_used_mb,
-                    "memory_peak_mb": metrics.memory_peak_mb,
-                    "module": metrics.module,
-                    "performance_level": metrics.performance_level.value,
+                    "operation": m.operation,
+                    "memory_delta_mb": m.memory_delta_mb,
+                    "module": m.module,
+                    "performance_level": m.performance_level.value,
                 }
-                for name, metrics in top_memory
+                for m in top_memory
             ],
         }
         
