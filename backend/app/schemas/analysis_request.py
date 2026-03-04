@@ -43,7 +43,11 @@ class AnalysisRequest(BaseModel):
         ...,
         min_length=1,
         max_length=100000,
-        description="Código del algoritmo a analizar"
+        description=(
+            "Código del algoritmo a analizar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
     )
     language: LanguageType = Field(
         LanguageType.PSEUDOCODE,
@@ -65,7 +69,7 @@ class AnalysisRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "code": "algorithm bubbleSort(A[n])\nbegin\n  for i ← 1 to n-1 do\n    for j ← 1 to n-i do\n      if A[j] > A[j+1] then\n        swap(A[j], A[j+1])\nend",
+                "code": "algorithm bubbleSort(A[n])\nbegin\n    for i ← 1 to n-1 do\n    begin\n        for j ← 1 to n-i do\n        begin\n            if A[j] > A[j+1] then\n            begin\n                call swap(A[j], A[j+1])\n            end\n        end\n    end\nend",
                 "language": "pseudocode",
                 "algorithm_name": "Bubble Sort"
             }
@@ -274,13 +278,13 @@ class CompleteAnalysisRequest(AnalysisRequest):
     class Config:
         json_schema_extra = {
             "example": {
-                "code": "algorithm mergeSort(A[n])\nbegin\n  if n > 1 then\n  begin\n    mid ← n/2\n    call mergeSort(A[1..mid])\n    call mergeSort(A[mid+1..n])\n    call merge(A, mid)\n  end\nend",
+                "code": "algorithm mergeSort(A[n])\nbegin\n    if n > 1 then\n    begin\n        mid ← n/2\n        call mergeSort(A[1..mid])\n        call mergeSort(A[mid+1..n])\n        call merge(A, mid)\n    end\nend",
                 "language": "pseudocode",
                 "algorithm_name": "Merge Sort",
                 "analyze_complexity": True,
                 "analyze_patterns": True,
                 "analyze_structures": True,
-                "generate_visualizations": True,
+                "generate_visualizations": False,
                 "use_cache": True,
                 "validate_before_analyze": True
             }
@@ -343,11 +347,19 @@ class BatchAnalysisRequest(BaseModel):
 # Quick Analysis Request (para testing rápido)
 class QuickAnalysisRequest(BaseModel):
     """Request simplificado para análisis rápido"""
-    code: str = Field(..., min_length=1, description="Código a analizar")
+    code: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Código a analizar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "code": "algorithm test(n)\nbegin\n  for i ← 1 to n do\n    x ← x + 1\nend"
+                "code": "algorithm sumArray(A[n])\nbegin\n    sum ← 0\n    for i ← 1 to n do\n    begin\n        sum ← sum + A[i]\n    end\n    return sum\nend"
             }
         }

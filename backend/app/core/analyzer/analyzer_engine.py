@@ -127,7 +127,8 @@ class AnalyzerEngine:
         analyze_line_by_line: bool = True,
         analyze_space: bool = True,
         analyze_recurrence: bool = True,
-        analyze_tight_bounds: bool = True
+        analyze_tight_bounds: bool = True,
+        source_code: str = ""
     ) -> AnalysisResult:
         """
         Analiza un algoritmo completamente.
@@ -163,7 +164,7 @@ class AnalyzerEngine:
             line_by_line_result = None
             if analyze_line_by_line:
                 self.logger.info("2/5 Analizando línea por línea...")
-                line_by_line_result = self.line_by_line_analyzer.analyze(ast)
+                line_by_line_result = self.line_by_line_analyzer.analyze(ast, source_code=source_code)
                 self.logger.info(f"  Analizadas {len(line_by_line_result.lines)} líneas")
             
             # 3. ANÁLISIS ESPACIAL

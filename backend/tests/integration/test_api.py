@@ -180,10 +180,9 @@ class TestQuickAnalysisEndpoint:
     
     def test_quick_analysis(self, client, simple_algorithm):
         """Test: Análisis rápido básico"""
-        import urllib.parse
-        encoded_code = urllib.parse.quote(simple_algorithm, safe='')
         response = client.post(
-            f"/api/v1/analysis/quick?code={encoded_code}"
+            "/api/v1/analysis/quick",
+            json={"code": simple_algorithm}
         )
         
         assert response.status_code == status.HTTP_200_OK
@@ -199,10 +198,9 @@ class TestLineByLineEndpoint:
     
     def test_line_by_line_analysis(self, client, simple_algorithm):
         """Test: Análisis línea por línea"""
-        import urllib.parse
-        encoded_code = urllib.parse.quote(simple_algorithm, safe='')
         response = client.post(
-            f"/api/v1/analysis/line-by-line?code={encoded_code}"
+            "/api/v1/analysis/line-by-line",
+            json={"code": simple_algorithm}
         )
         
         assert response.status_code == status.HTTP_200_OK

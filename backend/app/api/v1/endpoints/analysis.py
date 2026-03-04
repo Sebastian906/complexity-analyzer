@@ -49,12 +49,19 @@ router = APIRouter()
 # Schema para recibir código en el body
 class CodeInput(BaseModel):
     """Schema para recibir código en el body JSON"""
-    code: str = Field(..., description="Código del algoritmo a analizar (puede ser multilínea)")
+    code: str = Field(
+        ...,
+        description=(
+            "Código del algoritmo a analizar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "code": "algorithm example(n)\nbegin\n    for i ← 1 to n do\n    begin\n        print(i)\n    end\nend"
+                "code": "algorithm sumArray(A[n])\nbegin\n    sum ← 0\n    for i ← 1 to n do\n    begin\n        sum ← sum + A[i]\n    end\n    return sum\nend"
             }
         }
 
@@ -148,7 +155,8 @@ async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
                     analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
                     analyze_space=request.options.analyze_spatial if request.options else True,
                     analyze_recurrence=request.options.analyze_recurrence if request.options else True,
-                    analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
+                    analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True,
+                    source_code=request.code
                 )
         else:
             engine = AnalyzerEngine()
@@ -157,7 +165,8 @@ async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
                 analyze_line_by_line=request.options.analyze_line_by_line if request.options else True,
                 analyze_space=request.options.analyze_spatial if request.options else True,
                 analyze_recurrence=request.options.analyze_recurrence if request.options else True,
-                analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True
+                analyze_tight_bounds=request.options.calculate_tight_bounds if request.options else True,
+                source_code=request.code
             )
 
         # 3. Construir AlgorithmInfo
@@ -234,23 +243,21 @@ async def _analyze_complexity_complete_impl(request: ComplexityAnalysisRequest):
         # 8. Construir LineByLineAnalysis
         line_by_line = None
         if result.line_by_line:
-            # Filtrar líneas con line_number válido (>= 1)
-            valid_lines = [line for line in result.line_by_line.lines if line.line_number >= 1]
             line_by_line = LineByLineAnalysis(
                 lines=[
                     LineExecution(
                         line_number=line.line_number,
-                        code=getattr(line, 'code', f"Línea {line.line_number}"),
+                        code=line.code or f"Línea {line.line_number}",
                         execution_count=line.execution_count,
                         statement_type=line.statement_type,
                         complexity_contribution=getattr(line, 'complexity_contribution', line.execution_count),
                         explanation=line.explanation,
                         location=None,
                     )
-                    for line in valid_lines
+                    for line in result.line_by_line.lines
                 ],
                 dominant_complexity=result.big_o,
-                total_lines=len(valid_lines),
+                total_lines=len(result.line_by_line.lines),
                 summary=f"Análisis línea por línea de {ast.algorithm.name}",
             )
 
@@ -320,8 +327,9 @@ Recursivo: {'Sí' if result.is_recursive else 'No'}
     summary="Análisis Rápido",
     description="Análisis simplificado sin detalles completos"
 )
-async def analyze_quick(code: str = Query(..., description="Código a analizar")):
-    """Análisis rápido de complejidad"""
+async def analyze_quick(body: CodeInput = Body(..., description="Código a analizar en JSON")):
+    """Análisis rápido de complejidad. Recibe código multilínea via body JSON."""
+    code = body.code
     # PROFILING: Quick analysis
     if _profiling_enabled and _monitor:
         with _monitor.monitor("endpoint_quick_analysis", module="api"):
@@ -373,39 +381,27 @@ async def _analyze_quick_impl(code: str):
     description="""
 Análisis detallado de cada línea del algoritmo.
 
-El código puede enviarse de dos formas:
-1. **Query Parameter**: `?code=...` (para código corto, URL-encoded)
-2. **Request Body**: JSON con campo `code` (recomendado para código multilínea)
-
-Ejemplo Body:
+Enviar código multilínea en el body JSON:
 ```json
 {
-    "code": "algorithm example(n)\\nbegin\\n    for i ← 1 to n do\\n    begin\\n        print(i)\\n    end\\nend"
+    "code": "algorithm example(n)\nbegin\n    for i ← 1 to n do\n    begin\n        print(i)\n    end\nend"
 }
 ```
 """
 )
 async def analyze_line_by_line(
-    code: Optional[str] = Query(None, description="Código a analizar (URL-encoded)"),
-    body: Optional[CodeInput] = Body(None, description="Código en JSON (recomendado para multilínea)")
+    body: CodeInput = Body(..., description="Código en JSON (multilínea)")
 ):
     """
     Análisis línea por línea.
     
-    Acepta código via:
-    - Query parameter `code` (para compatibilidad, código URL-encoded)
-    - Request body con campo `code` (recomendado para código multilínea)
+    Recibe código multilínea via body JSON con campo 'code'.
     """
-    # Determinar fuente del código (prioridad al body)
-    source_code = None
-    if body and body.code:
-        source_code = body.code
-    elif code:
-        source_code = code
-    else:
+    source_code = body.code
+    if not source_code or not source_code.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Se requiere código. Envíe via query parameter 'code' o en el body JSON con campo 'code'"
+            detail="Se requiere código. Envíe en el body JSON con campo 'code'"
         )
     
     # PROFILING: Line by line
@@ -433,16 +429,13 @@ async def _analyze_line_by_line_impl(code: str):
         
         from app.core.analyzer import LineByLineAnalyzer
         analyzer = LineByLineAnalyzer()
-        result = analyzer.analyze(ast)
+        result = analyzer.analyze(ast, source_code=code)
         
         lines_data = []
         for line in result.lines:
-            # Filtrar líneas con line_number inválido
-            if line.line_number < 1:
-                continue
             lines_data.append({
                 "line_number": line.line_number,
-                "code": getattr(line, 'code', f"Línea {line.line_number}"),
+                "code": line.code,
                 "execution_count": line.execution_count,
                 "statement_type": line.statement_type,
                 "complexity_contribution": getattr(line, 'complexity_contribution', line.execution_count),

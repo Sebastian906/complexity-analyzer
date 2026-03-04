@@ -5,7 +5,8 @@ Endpoints REST para detectar estructuras de datos en algoritmos.
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
+from pydantic import BaseModel, Field
 from app.schemas import (
     # Structure Request Schemas
     StructureDetectionRequest,
@@ -34,6 +35,30 @@ from app.core.config import settings
 logger = setup_logger(__name__)
 
 router = APIRouter()
+
+# Schema para detección de estructura específica
+class DetectSpecificStructureInput(BaseModel):
+    """Schema para recibir código y tipo de estructura en el body JSON"""
+    code: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Código del algoritmo a analizar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
+    structure_type: str = Field(..., description="Tipo de estructura a detectar")
+    analyze_usage: bool = Field(True, description="Analizar uso de la estructura")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "code": "algorithm bubbleSort(A[n])\nbegin\n    for i ← 1 to n-1 do\n    begin\n        for j ← 1 to n-i do\n        begin\n            if A[j] > A[j+1] then\n            begin\n                temp ← A[j]\n                A[j] ← A[j+1]\n                A[j+1] ← temp\n            end\n        end\n    end\nend",
+                "structure_type": "array",
+                "analyze_usage": True
+            }
+        }
 
 @router.post(
     "/detect",
@@ -173,9 +198,7 @@ async def detect_structures(request: StructureDetectionRequest):
     description="Detecta una estructura de datos específica"
 )
 async def detect_specific_structure(
-    code: str,
-    structure_type: str,
-    analyze_usage: bool = True
+    body: DetectSpecificStructureInput = Body(..., description="Código y tipo de estructura en JSON")
 ):
     """
     Detecta una estructura específica en el algoritmo.
@@ -191,6 +214,9 @@ async def detect_specific_structure(
     - hash_table
     """
     try:
+        code = body.code
+        structure_type = body.structure_type
+        analyze_usage = body.analyze_usage
         logger.info(f"Detección específica: {structure_type}")
 
         # Validar tipo

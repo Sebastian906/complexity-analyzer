@@ -17,8 +17,9 @@ logger = setup_logger(__name__)
 class LineExecution:
     """Información de ejecución de una línea"""
     line_number: int
-    statement_type: str
-    execution_count: str  # Expresión: "1", "n", "n^2", etc.
+    code: str = ""  # Código fuente de la línea
+    statement_type: str = ""
+    execution_count: str = ""  # Expresión: "1", "n", "n^2", etc.
     explanation: str = ""
 
 @dataclass
@@ -32,6 +33,7 @@ class LineByLineResult:
             "lines": [
                 {
                     "line": line.line_number,
+                    "code": line.code,
                     "type": line.statement_type,
                     "executions": line.execution_count,
                     "explanation": line.explanation
@@ -57,15 +59,24 @@ class LineByLineAnalyzer:
         # Contexto actual (para loops anidados)
         self.context_multiplier = "1"
         self.context_stack: List[str] = []
+        
+        # Líneas del código fuente original
+        self._source_lines: List[str] = []
     
-    def analyze(self, ast: ProgramNode) -> LineByLineResult:
-        """Analiza el algoritmo línea por línea"""
+    def analyze(self, ast: ProgramNode, source_code: str = "") -> LineByLineResult:
+        """Analiza el algoritmo línea por línea
+        
+        Args:
+            ast: AST del algoritmo
+            source_code: Código fuente original para extraer texto de cada línea
+        """
         self.logger.info(f"Analizando línea por línea: {ast.algorithm.name}")
         
         # Reset
         self.result = LineByLineResult()
         self.context_stack = []
         self.context_multiplier = "1"
+        self._source_lines = source_code.split('\n') if source_code else []
         
         # Analizar el algoritmo
         if ast.algorithm:
@@ -76,8 +87,9 @@ class LineByLineAnalyzer:
     def _analyze_algorithm(self, algorithm: AlgorithmNode):
         """Analiza un algoritmo"""
         # La declaración del algoritmo se ejecuta 1 vez
+        alg_line = algorithm.line or 1
         self._add_line(
-            line_number=1,
+            line_number=alg_line,
             statement_type="algorithm_declaration",
             execution_count="1",
             explanation=f"Declaración del algoritmo {algorithm.name}"
@@ -229,8 +241,14 @@ class LineByLineAnalyzer:
     def _add_line(self, line_number: int, statement_type: str, 
                   execution_count: str, explanation: str):
         """Agrega una línea al resultado"""
+        # Obtener código fuente de la línea
+        code_text = ""
+        if self._source_lines and 0 < line_number <= len(self._source_lines):
+            code_text = self._source_lines[line_number - 1].strip()
+        
         line = LineExecution(
             line_number=line_number,
+            code=code_text or f"Línea {line_number}",
             statement_type=statement_type,
             execution_count=execution_count,
             explanation=explanation

@@ -140,7 +140,7 @@ end"""
         print("\n6. Testing quick analysis...")
         response = httpx.post(
             f"{BASE_URL}/analysis/quick",
-            params={"code": "algorithm test(n)\nbegin\n    x ← 1\nend"},
+            json={"code": "algorithm test(n)\nbegin\n    x ← 1\nend"},
             timeout=10.0
         )
         

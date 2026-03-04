@@ -104,7 +104,15 @@ class AlgorithmBase(BaseModel):
 
 class AlgorithmCreate(AlgorithmBase):
     """Schema para crear un algoritmo"""
-    code: str = Field(..., min_length=1, description="Código fuente del algoritmo")
+    code: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Código fuente del algoritmo (multilínea). "
+            "En JSON, cada salto de línea se representa con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
     
     class Config:
         json_schema_extra = {
@@ -114,7 +122,7 @@ class AlgorithmCreate(AlgorithmBase):
                 "category": "sorting",
                 "tags": ["sorting", "quadratic", "simple"],
                 "language": "pseudocode",
-                "code": "algorithm bubbleSort(A[n])\nbegin\n  for i ← 1 to n-1 do\n    for j ← 1 to n-i do\n      if A[j] > A[j+1] then\n        swap(A[j], A[j+1])\nend"
+                "code": "algorithm bubbleSort(A[n])\nbegin\n    for i ← 1 to n-1 do\n    begin\n        for j ← 1 to n-i do\n        begin\n            if A[j] > A[j+1] then\n            begin\n                call swap(A[j], A[j+1])\n            end\n        end\n    end\nend"
             }
         }
 

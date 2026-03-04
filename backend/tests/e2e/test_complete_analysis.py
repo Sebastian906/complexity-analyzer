@@ -150,7 +150,7 @@ end"""
         
         response = client.post(
             "/api/v1/analysis/quick",
-            params={"code": code}
+            json={"code": code}
         )
         
         assert response.status_code == 200

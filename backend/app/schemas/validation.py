@@ -76,7 +76,11 @@ class ValidationRequest(BaseModel):
     """Request para validación de código"""
     code: str = Field(
         ..., 
-        description="Código a validar (puede estar vacío para validación de error)"
+        description=(
+            "Código a validar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
     )
 
     # Agregado field_validator para validaciones personalizadas

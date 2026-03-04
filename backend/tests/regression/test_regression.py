@@ -532,7 +532,7 @@ class TestQuickAnalysisRegression:
         """Quick analysis para '{algo_name}' produce big_o correcta."""
         resp = client.post(
             "/api/v1/analysis/quick",
-            params={"code": algo_data["code"]},
+            json={"code": algo_data["code"]},
         )
         assert resp.status_code == 200
         data = resp.json()
