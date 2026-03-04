@@ -129,7 +129,7 @@ class TestResponseTimes:
         start = time.perf_counter()
         resp = client.post(
             "/api/v1/analysis/quick",
-            params={"code": SIMPLE_CODE},
+            json={"code": SIMPLE_CODE},
         )
         elapsed = time.perf_counter() - start
 

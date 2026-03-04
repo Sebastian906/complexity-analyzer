@@ -256,7 +256,7 @@ end"""
 
         response = client.post(
             "/api/v1/patterns/detect-specific",
-            params={
+            json={
                 "code": code,
                 "pattern_type": "brute_force"
             }
@@ -282,7 +282,7 @@ end"""
 
         response = client.post(
             "/api/v1/patterns/detect-specific",
-            params={
+            json={
                 "code": code,
                 "pattern_type": "recursive"
             }
@@ -298,7 +298,7 @@ end"""
         """Debe rechazar tipo de patrón inválido"""
         response = client.post(
             "/api/v1/patterns/detect-specific",
-            params={
+            json={
                 "code": bubble_sort_request["code"],
                 "pattern_type": "invalid_pattern_type"
             }
@@ -331,7 +331,7 @@ end"""
         for pattern_type in pattern_types:
             response = client.post(
                 "/api/v1/patterns/detect-specific",
-                params={
+                json={
                     "code": code,
                     "pattern_type": pattern_type
                 }

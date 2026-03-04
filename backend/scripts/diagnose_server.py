@@ -59,7 +59,7 @@ def diagnose():
         start = time.time()
         response = httpx.post(
             "http://localhost:8000/api/v1/analysis/quick",
-            params={"code": code},
+            json={"code": code},
             timeout=15.0
         )
         elapsed = time.time() - start

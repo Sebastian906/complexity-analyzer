@@ -378,6 +378,7 @@ class AnalysisOrchestrator:
                 analyze_space=request.complexity_options.analyze_spatial,
                 analyze_recurrence=request.complexity_options.analyze_recurrence,
                 analyze_tight_bounds=request.complexity_options.calculate_tight_bounds,
+                source_code=request.code,
             )
 
             # AGREGAR VALIDACIÓN

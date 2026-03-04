@@ -413,10 +413,10 @@ class TestPatternsEndpoints:
     
     def test_detect_specific_pattern(self, client, fibonacci_payload):
         """POST /api/v1/patterns/detect-specific debe detectar patrón específico"""
-        # El endpoint espera 'code' y 'pattern_type' como parámetros directos
+        # El endpoint espera 'code' y 'pattern_type' en el body JSON
         response = client.post(
             "/api/v1/patterns/detect-specific",
-            params={"code": fibonacci_payload["code"], "pattern_type": "recursive"}
+            json={"code": fibonacci_payload["code"], "pattern_type": "recursive"}
         )
         
         # Si falla con 422, el endpoint espera un formato diferente
@@ -651,7 +651,7 @@ end"""
         """POST /api/v1/validation/validate/quick debe funcionar"""
         response = client.post(
             "/api/v1/validation/validate/quick",
-            params={"code": bubble_sort_payload["code"]}
+            json={"code": bubble_sort_payload["code"]}
         )
         
         assert response.status_code == 200
@@ -666,7 +666,7 @@ end"""
         
         response = client.post(
             "/api/v1/validation/validate/quick",
-            params={"code": invalid_code}
+            json={"code": invalid_code}
         )
         
         assert response.status_code == 200

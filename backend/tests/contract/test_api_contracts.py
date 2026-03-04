@@ -232,7 +232,7 @@ class TestQuickAnalysisContract:
     """Contrato de POST /api/v1/analysis/quick"""
 
     def test_quick_analysis_response_contract(self, client, simple_code):
-        resp = client.post("/api/v1/analysis/quick", params={"code": simple_code})
+        resp = client.post("/api/v1/analysis/quick", json={"code": simple_code})
         assert resp.status_code == 200
 
         data = resp.json()

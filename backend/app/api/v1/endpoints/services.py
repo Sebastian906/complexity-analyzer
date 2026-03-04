@@ -7,7 +7,8 @@ validación, exportación y gestión de caché.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status, Query, Path as PathParam
+from fastapi import APIRouter, HTTPException, status, Query, Body, Path as PathParam
+from pydantic import BaseModel, Field
 from app.schemas import (
     # Algorithm Schemas
     AlgorithmCreate,
@@ -62,6 +63,26 @@ from app.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 router = APIRouter()
+
+# Schema para recibir código en el body de validación rápida
+class QuickValidateInput(BaseModel):
+    """Schema para recibir código en el body JSON para validación rápida"""
+    code: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Código del algoritmo a validar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "code": "algorithm bubbleSort(A[n])\nbegin\n    for i ← 1 to n-1 do\n    begin\n        for j ← 1 to n-i do\n        begin\n            if A[j] > A[j+1] then\n            begin\n                call swap(A[j], A[j+1])\n            end\n        end\n    end\nend"
+            }
+        }
 
 # INSTANCIAS DE SERVICIOS
 algorithm_service = AlgorithmService()
@@ -522,9 +543,10 @@ async def validate_code(request: ValidationRequest):
     summary="Validación Rápida",
     description="Validación rápida solo sintaxis (true/false)"
 )
-async def quick_validate(code: str = Query(..., description="Código a validar")):
+async def quick_validate(body: QuickValidateInput = Body(..., description="Código a validar en JSON")):
     """Validación rápida solo sintaxis"""
     try:
+        code = body.code
         is_valid = await validation_service.quick_validate(code)
         return {"is_valid": is_valid}
     except Exception as e:

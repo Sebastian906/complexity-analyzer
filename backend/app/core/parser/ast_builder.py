@@ -105,6 +105,7 @@ class ASTBuilder(Transformer):
     def algorithm(self, items: List[Any]) -> AlgorithmNode:
         """Regla algorithm: ALGORITHM_KW IDENTIFIER "(" parameter_list? ")" block"""
         # items[0] es ALGORITHM_KW, items[1] es IDENTIFIER (nombre del algoritmo)
+        alg_token = items[0]  # ALGORITHM_KW token con info de línea
         name = str(items[1])
         parameters = []
         body = None
@@ -120,7 +121,9 @@ class ASTBuilder(Transformer):
         return AlgorithmNode(
             name=name,
             parameters=parameters,
-            body=body
+            body=body,
+            line=getattr(alg_token, 'line', None),
+            column=getattr(alg_token, 'column', None)
         )
 
     def parameter_list(self, items: List[ParameterNode]) -> List[ParameterNode]:
@@ -211,9 +214,15 @@ class ASTBuilder(Transformer):
         items[2] = expression (value)
         """
         target = items[0]
+        assign_token = items[1]  # ASSIGN token con info de línea
         value = items[2]
 
-        return AssignmentNode(target=target, value=value)
+        return AssignmentNode(
+            target=target,
+            value=value,
+            line=getattr(assign_token, 'line', None),
+            column=getattr(assign_token, 'column', None)
+        )
 
     def lvalue(self, items: List[Any]) -> LValueNode:
         """Regla lvalue: variable, array access, o object field"""
@@ -266,11 +275,14 @@ class ASTBuilder(Transformer):
 
         logger.debug(f"ForLoop: {variable} from {start} to {end}")
 
+        for_token = items[0]  # FOR token con info de línea
         return ForLoopNode(
             variable=variable,
             start=start,
             end=end,
-            body=body
+            body=body,
+            line=getattr(for_token, 'line', None),
+            column=getattr(for_token, 'column', None)
         )
 
     def while_loop(self, items: List[Any]) -> WhileLoopNode:
@@ -281,10 +293,16 @@ class ASTBuilder(Transformer):
         items[2] = DO token
         items[3] = block (body)
         """
+        while_token = items[0]  # WHILE token con info de línea
         condition = items[1]
         body = items[3]
 
-        return WhileLoopNode(condition=condition, body=body)
+        return WhileLoopNode(
+            condition=condition,
+            body=body,
+            line=getattr(while_token, 'line', None),
+            column=getattr(while_token, 'column', None)
+        )
 
     def repeat_loop(self, items: List[Any]) -> RepeatLoopNode:
         """Regla repeat_loop: REPEAT statement_list UNTIL "(" condition ")"
@@ -294,10 +312,16 @@ class ASTBuilder(Transformer):
         items[2] = UNTIL token
         items[3] = condition
         """
+        repeat_token = items[0]  # REPEAT token con info de línea
         statements = items[1] if isinstance(items[1], list) else []
         condition = items[3]
 
-        return RepeatLoopNode(body=statements, condition=condition)
+        return RepeatLoopNode(
+            body=statements,
+            condition=condition,
+            line=getattr(repeat_token, 'line', None),
+            column=getattr(repeat_token, 'column', None)
+        )
 
     # Condicional
 
@@ -311,6 +335,7 @@ class ASTBuilder(Transformer):
         items[4] = ELSE token (opcional)
         items[5] = block (else_block) (opcional)
         """
+        if_token = items[0]  # IF token con info de línea
         condition = items[1]
         then_block = items[3]
         else_block = items[5] if len(items) > 5 else None
@@ -318,7 +343,9 @@ class ASTBuilder(Transformer):
         return IfStatementNode(
             condition=condition,
             then_block=then_block,
-            else_block=else_block
+            else_block=else_block,
+            line=getattr(if_token, 'line', None),
+            column=getattr(if_token, 'column', None)
         )
 
     # Llamadas y Retorno
@@ -330,12 +357,15 @@ class ASTBuilder(Transformer):
         items[1] = IDENTIFIER (function_name)
         items[2] = argument_list (opcional)
         """
+        call_token = items[0]  # CALL token con info de línea
         function_name = str(items[1])
         arguments = items[2] if len(items) > 2 else []
         
         return CallStatementNode(
             function_name=function_name,
-            arguments=arguments
+            arguments=arguments,
+            line=getattr(call_token, 'line', None),
+            column=getattr(call_token, 'column', None)
         )
 
     def argument_list(self, items: List[Any]) -> List[Any]:
@@ -349,8 +379,13 @@ class ASTBuilder(Transformer):
     def return_statement(self, items: List[Any]) -> ReturnStatementNode:
         """Regla return_statement: RETURN expression?"""
         # items[0] es el token RETURN, items[1] (si existe) es la expresión
+        return_token = items[0]  # RETURN token con info de línea
         value = items[1] if len(items) > 1 else None
-        return ReturnStatementNode(value=value)
+        return ReturnStatementNode(
+            value=value,
+            line=getattr(return_token, 'line', None),
+            column=getattr(return_token, 'column', None)
+        )
 
     # Expresiones - Lógicas
 

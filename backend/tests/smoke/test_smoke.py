@@ -165,7 +165,7 @@ class TestEndpointsSmoke:
     def test_analysis_quick_responds(self, client):
         resp = client.post(
             "/api/v1/analysis/quick",
-            params={"code": SIMPLE_CODE},
+            json={"code": SIMPLE_CODE},
         )
         assert resp.status_code != 500
 
@@ -209,7 +209,7 @@ class TestEndpointsSmoke:
     def test_validation_quick_responds(self, client):
         resp = client.post(
             "/api/v1/validation/validate/quick",
-            params={"code": SIMPLE_CODE},
+            json={"code": SIMPLE_CODE},
         )
         assert resp.status_code in (200, 404, 405)
 

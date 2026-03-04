@@ -5,7 +5,8 @@ Endpoints REST para detectar patrones algorítmicos en pseudocódigo.
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
+from pydantic import BaseModel, Field
 from app.schemas import (
     PatternDetectionRequest,
     PatternDetectionResult,
@@ -26,6 +27,28 @@ from app.core.config import settings
 
 logger = setup_logger(__name__)
 router = APIRouter()
+
+# Schema para detección de patrón específico
+class DetectSpecificPatternInput(BaseModel):
+    """Schema para recibir código y tipo de patrón en el body JSON"""
+    code: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Código del algoritmo a analizar (multilínea). "
+            "En JSON, los saltos de línea se representan con \\n. "
+            "Ejemplo: \"algorithm test(n)\\nbegin\\n    x ← 1\\nend\""
+        )
+    )
+    pattern_type: str = Field(..., description="Tipo de patrón a detectar")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "code": "algorithm fibonacci(n)\nbegin\n    if n <= 1 then\n    begin\n        return n\n    end\n    return fibonacci(n - 1) + fibonacci(n - 2)\nend",
+                "pattern_type": "recursive"
+            }
+        }
 
 @router.post(
     "/detect",
@@ -214,11 +237,10 @@ async def detect_patterns(request: PatternDetectionRequest):
     response_model=BaseResponse,
     status_code=status.HTTP_200_OK,
     summary="Detectar Patrón Específico",
-    description="Detecta un patrón algorítmico específico"
+    description="Detecta un patrón algorítmico específico. Enviar código y tipo de patrón en body JSON."
 )
 async def detect_specific_pattern(
-    code: str,
-    pattern_type: str
+    body: DetectSpecificPatternInput = Body(..., description="Código y tipo de patrón en JSON")
 ):
     """
     Detecta un patrón específico en el algoritmo.
@@ -238,6 +260,8 @@ async def detect_specific_pattern(
     - approximation
     """
     try:
+        code = body.code
+        pattern_type = body.pattern_type
         logger.info(f"Detección específica solicitada: {pattern_type}")
 
         # Validar pattern_type
