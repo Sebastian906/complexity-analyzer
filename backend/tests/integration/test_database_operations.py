@@ -15,6 +15,7 @@ from app.infrastructure.database import (
     AnalysisRepository,
     UserRepository,
 )
+from app.infrastructure.database.mongodb_client import reset_mongodb_client
 from app.infrastructure.database.models.mongo import (
     Algorithm,
     AnalysisResult,
@@ -27,18 +28,37 @@ from app.core.security import hash_password
 class TestMongoDBOperations:
     """Tests de operaciones en MongoDB"""
     
+    @pytest.fixture(autouse=True, scope="class")
+    async def ensure_mongodb_connection(self):
+        """
+        Asegurar conexión fresca de MongoDB en el event loop actual.
+        
+        Cuando se ejecutan todos los tests de integración juntos, el TestClient
+        de FastAPI (session-scoped) conecta MongoDB en su propio event loop interno.
+        Al llegar a estos tests async, pytest-asyncio usa un event loop diferente,
+        causando 'Event loop is closed'. Este fixture resetea el singleton y
+        reconecta MongoDB en el event loop correcto.
+        """
+        client = get_mongodb_client()
+        if client.needs_reconnect():
+            reset_mongodb_client()
+            client = get_mongodb_client()
+            await client.connect()
+        elif not client.is_connected:
+            await client.connect()
+        
+        yield
+        
+        # No cerrar aquí - el singleton puede ser usado por TestDatabaseFactory después
+    
     @pytest.mark.asyncio
     async def test_mongodb_connection(self):
         """Test conexión a MongoDB"""
         client = get_mongodb_client()
-        # Si no está conectado, conectar
-        if client.client is None:
-            await client.connect()
+        # La conexión ya fue establecida por el fixture ensure_mongodb_connection
         
         is_connected = await client.ping()
         assert is_connected is True
-        
-        # NO cerrar el cliente singleton - se cerrará al final de la sesión
     
     @pytest.mark.asyncio
     async def test_algorithm_repository_create(self):
