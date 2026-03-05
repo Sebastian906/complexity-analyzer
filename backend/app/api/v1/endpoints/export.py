@@ -43,6 +43,7 @@ from app.infrastructure.export import (
     PDF_AVAILABLE,
     EXCEL_AVAILABLE,
 )
+from app.core.security import sanitize_filename
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -329,7 +330,7 @@ async def export_algorithm_analysis(request: ExportRequest):
             c if c.isalnum() or c in "._- " else "_" 
             for c in algorithm.name
         )
-        output_filename = request.filename or f"{safe_name}.{request.options.format.value}"
+        output_filename = sanitize_filename(request.filename) if request.filename else f"{safe_name}.{request.options.format.value}"
         
         # Usar carpeta específica según formato
         format_dir = settings.get_export_path(request.options.format.value)

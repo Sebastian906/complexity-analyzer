@@ -34,6 +34,7 @@ from app.profiling import (
     print_profiling_summary,
     get_performance_monitor,
 )
+from app.api.middleware import SecurityHeadersMiddleware, RateLimitMiddleware
 from app.utils.logger import setup_logger
 
 # Configurar logger
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     Maneja eventos de inicio y apagado de manera asíncrona.
     """
     # STARTUP - Inicialización
-    print("LIFESPAN STARTUP INICIADO")
+    logger.info("LIFESPAN STARTUP INICIADO")
     logger.info(f"Iniciando {settings.APP_NAME} v{__version__}")
     logger.info(f"Entorno: {settings.APP_ENV}")
     logger.info(f"Debug Mode: {settings.DEBUG}")
@@ -99,11 +100,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             except ImportError:
                 logger.warning("Redis client no disponible - módulo no implementado")
         
-        # Verificar APIs de LLMs
+        # Verificar APIs de LLMs (sin revelar presencia de claves en logs)
         if settings.ANTHROPIC_API_KEY:
-            logger.info("Claude API configurada")
+            logger.debug("LLM primario disponible")
         if settings.GOOGLE_API_KEY:
-            logger.info("Gemini API configurada")
+            logger.debug("LLM secundario disponible")
         
         logger.info("Aplicación iniciada correctamente")
         
@@ -194,6 +195,16 @@ app.add_middleware(
 
 # Compresión GZip
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Security Headers (X-Content-Type-Options, X-Frame-Options, HSTS, CSP)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate Limiting
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=settings.RATE_LIMIT_PER_MINUTE,
+    requests_per_hour=settings.RATE_LIMIT_PER_HOUR,
+)
 
 # Middleware de profiling
 @app.middleware("http")
@@ -287,7 +298,7 @@ async def parser_exception_handler(request: Request, exc: ParserException):
             "error": {
                 "type": "ParserError",
                 "message": exc.message,
-                "details": exc.details,
+                "details": exc.details if settings.DEBUG else None,
             }
         },
     )
@@ -302,8 +313,8 @@ async def llm_exception_handler(request: Request, exc: LLMException):
             "success": False,
             "error": {
                 "type": "LLMError",
-                "message": exc.message,
-                "details": exc.details,
+                "message": exc.message if settings.DEBUG else "Error en servicio de LLM",
+                "details": exc.details if settings.DEBUG else None,
             }
         },
     )

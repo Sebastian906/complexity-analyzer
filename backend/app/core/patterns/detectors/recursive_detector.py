@@ -14,6 +14,9 @@ from app.core.patterns.base_pattern import (
     PatternMatch
 )
 from app.core.patterns.pattern_matcher import PatternMatcher, get_node_children, get_algorithm_name
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 class RecursiveDetector(BasePatternDetector):
     """Detector de algoritmos recursivos MEJORADO"""
@@ -99,8 +102,7 @@ class RecursiveDetector(BasePatternDetector):
 
         # Calcular confianza BASE
         confidence = self._calculate_confidence(indicators_found, indicators_missing)
-        # DEBUG TEMPORAL
-        print(f"[DEBUG] Fibonacci: recursive_calls={analysis['recursive_call_count']}, base_confidence={confidence}")
+        logger.debug(f"Recursive: recursive_calls={analysis['recursive_call_count']}, base_confidence={confidence}")
 
         # AJUSTES CRÍTICOS DE CONFIANZA 
         # NUEVA LÓGICA: Recursión múltiple es EL INDICADOR MÁS FUERTE
@@ -109,12 +111,12 @@ class RecursiveDetector(BasePatternDetector):
             # Recursión múltiple (Fibonacci, Torres de Hanoi, etc.)
             # ES DEFINITIVAMENTE recursión - confianza mínima 90%
             confidence = max(confidence, 0.90)
-            print(f"[DEBUG] Fibonacci: BOOST aplicado, nueva confianza={confidence}")
+            logger.debug(f"Recursive: BOOST aplicado, nueva confianza={confidence}")
 
             # Si además tiene caso base -> 95%
             if analysis["has_base_case"]:
                 confidence = max(confidence, 0.95)
-                print(f"[DEBUG] Fibonacci: BOOST caso base, confianza final={confidence}")  # DEBUG
+                logger.debug(f"Recursive: BOOST caso base, confianza final={confidence}")
 
         # Si tiene solo 1 llamada recursiva -> confianza moderada
         elif analysis["recursive_call_count"] == 1:

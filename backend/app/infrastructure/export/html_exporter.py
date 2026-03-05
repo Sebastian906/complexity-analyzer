@@ -7,6 +7,7 @@ con CSS moderno y JavaScript para visualización dinámica.
 
 import time
 import json
+import html as html_module
 from typing import Dict, Any
 
 from app.infrastructure.export.base_exporter import (
@@ -95,7 +96,7 @@ class HTMLExporter(BaseExporter):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Análisis: {data.algorithm.name}</title>
+    <title>Análisis: {html_module.escape(data.algorithm.name)}</title>
     <style>
         {self._generate_css()}
     </style>
@@ -387,7 +388,7 @@ class HTMLExporter(BaseExporter):
         """Genera el encabezado"""
         return f"""
         <header>
-            <h1>{data.algorithm.name}</h1>
+            <h1>{html_module.escape(data.algorithm.name)}</h1>
             <p class="subtitle">Análisis de Complejidad Algorítmica</p>
             <p style="margin-top: 10px; opacity: 0.8;">
                 Generado: {self.format_timestamp(data.timestamp)}
@@ -403,8 +404,8 @@ class HTMLExporter(BaseExporter):
         
         # Información básica
         info_items = [
-            ("Lenguaje", data.algorithm.language),
-            ("Categoría", data.algorithm.category or "No especificada"),
+            ("Lenguaje", html_module.escape(data.algorithm.language)),
+            ("Categoría", html_module.escape(data.algorithm.category or "No especificada")),
             ("Tiempo de análisis", f"{data.analysis.analysis_time:.3f}s"),
         ]
         
@@ -414,8 +415,8 @@ class HTMLExporter(BaseExporter):
         for label, value in info_items:
             html += f"""
             <div class="info-item">
-                <div class="info-label">{label}</div>
-                <div class="info-value">{value}</div>
+                <div class="info-label">{html_module.escape(str(label))}</div>
+                <div class="info-value">{html_module.escape(str(value))}</div>
             </div>
             """
         
@@ -512,7 +513,7 @@ class HTMLExporter(BaseExporter):
             
             html += f"""
             <li class="pattern-item">
-                <span class="pattern-name">{name}</span>
+                <span class="pattern-name">{html_module.escape(str(name))}</span>
                 <div>
                     <div class="confidence-bar">
                         <div class="confidence-fill" style="width: {confidence * 100}%"></div>

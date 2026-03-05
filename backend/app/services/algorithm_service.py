@@ -518,10 +518,12 @@ class AlgorithmService:
                 # Búsqueda de texto libre (si existe)
                 if request.query:
                     # MongoDB text search (requiere índice de texto)
-                    # Alternativa: usar regex
+                    # Alternativa: usar regex con escape para prevenir inyección
+                    import re
+                    safe_query = re.escape(request.query)
                     filter_dict["$or"] = [
-                        {"name": {"$regex": request.query, "$options": "i"}},
-                        {"description": {"$regex": request.query, "$options": "i"}}
+                        {"name": {"$regex": safe_query, "$options": "i"}},
+                        {"description": {"$regex": safe_query, "$options": "i"}}
                     ]
 
                 logger.debug(f"Filtro MongoDB: {filter_dict}")
