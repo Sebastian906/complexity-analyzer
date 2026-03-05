@@ -27,6 +27,7 @@ from app.core.patterns.detectors.advanced_patterns import (
     ApproximationDetector
 )
 from app.utils import logger
+from app.core.config import settings
 
 @dataclass
 class PatternDetectionResult:
@@ -195,12 +196,13 @@ class PatternDetector:
         """
         patterns = []
 
-        # Habilitar debug temporalmente
-        from rich.console import Console
-        debug_console = Console()
-        
-        debug_console.print("\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]")
-        debug_console.print("=" * 70)
+        # Solo habilitar debug console en modo desarrollo/debug
+        debug_console = None
+        if settings.DEBUG:
+            from rich.console import Console
+            debug_console = Console()
+            debug_console.print("\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]")
+            debug_console.print("=" * 70)
 
         # PARALELIZACIÓN: Ejecutar todos los detectores concurrentemente
         import asyncio
@@ -215,23 +217,26 @@ class PatternDetector:
                     confidence = match.confidence
                     indicators_found = len(match.indicators_found)
                     total_indicators = match.total_indicators
-                    debug_console.print(
-                        f"[green]✓[/green] {detector.pattern_name:30s} | "
-                        f"Confianza: [green]{confidence:5.1%}[/green] | "
-                        f"Indicadores: {indicators_found}/{total_indicators}"
-                    )
+                    if debug_console:
+                        debug_console.print(
+                            f"[green]✓[/green] {detector.pattern_name:30s} | "
+                            f"Confianza: [green]{confidence:5.1%}[/green] | "
+                            f"Indicadores: {indicators_found}/{total_indicators}"
+                        )
                     return match
                 else:
                     # Debug: patrones no detectados
-                    debug_console.print(
-                        f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
-                    )
+                    if debug_console:
+                        debug_console.print(
+                            f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
+                        )
                     return None
             except Exception as e:
                 error_msg = str(e)[:50]
-                debug_console.print(
-                    f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
-                )
+                if debug_console:
+                    debug_console.print(
+                        f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
+                    )
                 logger.error(f"Error en detector {detector.pattern_name}: {e}")
                 return None
 
@@ -256,21 +261,24 @@ class PatternDetector:
                             confidence = match.confidence
                             indicators_found = len(match.indicators_found)
                             total_indicators = match.total_indicators
-                            debug_console.print(
-                                f"[green]✓[/green] {detector.pattern_name:30s} | "
-                                f"Confianza: [green]{confidence:5.1%}[/green] | "
-                                f"Indicadores: {indicators_found}/{total_indicators}"
-                            )
+                            if debug_console:
+                                debug_console.print(
+                                    f"[green]✓[/green] {detector.pattern_name:30s} | "
+                                    f"Confianza: [green]{confidence:5.1%}[/green] | "
+                                    f"Indicadores: {indicators_found}/{total_indicators}"
+                                )
                             results.append(match)
                         else:
-                            debug_console.print(
-                                f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
-                            )
+                            if debug_console:
+                                debug_console.print(
+                                    f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
+                                )
                     except Exception as e:
                         error_msg = str(e)[:50]
-                        debug_console.print(
-                            f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
-                        )
+                        if debug_console:
+                            debug_console.print(
+                                f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
+                            )
                         logger.error(f"Error en detector {detector.pattern_name}: {e}")
 
                 patterns = results
@@ -302,8 +310,9 @@ class PatternDetector:
                 except Exception:
                     continue
 
-        debug_console.print("=" * 70)
-        debug_console.print(f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n")
+        if debug_console:
+            debug_console.print("=" * 70)
+            debug_console.print(f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n")
 
         return patterns
 

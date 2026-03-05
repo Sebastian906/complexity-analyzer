@@ -4,6 +4,7 @@ Export Service - Servicio de Exportación
 Exporta resultados de análisis en múltiples formatos (JSON, PDF, Markdown, etc.)
 """
 
+import html as html_module
 import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -236,15 +237,15 @@ class ExportService:
         data = request.data
 
         if "algorithm_name" in data:
-            html += f"    <h2>{data['algorithm_name']}</h2>\n"
+            html += f"    <h2>{html_module.escape(str(data['algorithm_name']))}</h2>\n"
 
         if "complexity_result" in data:
             comp = data["complexity_result"]
             html += "    <div class='complexity'>\n"
             html += "        <h3>Complejidad</h3>\n"
-            html += f"        <p><strong>Big O:</strong> {comp.get('big_o', 'N/A')}</p>\n"
-            html += f"        <p><strong>Omega:</strong> {comp.get('omega', 'N/A')}</p>\n"
-            html += f"        <p><strong>Theta:</strong> {comp.get('theta', 'N/A')}</p>\n"
+            html += f"        <p><strong>Big O:</strong> {html_module.escape(str(comp.get('big_o', 'N/A')))}</p>\n"
+            html += f"        <p><strong>Omega:</strong> {html_module.escape(str(comp.get('omega', 'N/A')))}</p>\n"
+            html += f"        <p><strong>Theta:</strong> {html_module.escape(str(comp.get('theta', 'N/A')))}</p>\n"
             html += "    </div>\n"
 
         html += "</body>\n</html>"

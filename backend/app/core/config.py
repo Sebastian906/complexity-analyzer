@@ -5,6 +5,7 @@ Gestiona todas las configuraciones de la aplicación usando Pydantic Settings.
 Carga variables de entorno y proporciona validación de tipos.
 """
 
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Literal
@@ -39,7 +40,9 @@ class Settings(BaseSettings):
     )
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = Field(default=["GET", "POST", "PUT", "DELETE", "PATCH"])
-    CORS_ALLOW_HEADERS: List[str] = Field(default=["*"])
+    CORS_ALLOW_HEADERS: List[str] = Field(
+        default=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"]
+    )
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -51,7 +54,7 @@ class Settings(BaseSettings):
         return v
     
     # Seguridad
-    SECRET_KEY: str = Field(default="CHANGE-ME-IN-PRODUCTION-PLEASE")
+    SECRET_KEY: str = Field(default="")
     API_KEY_HEADER: str = "X-API-Key"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -87,8 +90,8 @@ class Settings(BaseSettings):
     # PostgreSQL (Alternativa)
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str = "complexity_user"
-    POSTGRES_PASSWORD: str = "complexity_password"
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "complexity_analyzer"
     POSTGRES_ECHO: bool = False
     POSTGRES_POOL_SIZE: int = 20
@@ -256,7 +259,35 @@ class Settings(BaseSettings):
     )
     
     def model_post_init(self, __context):
-        """Post-inicialización: crear directorios necesarios"""
+        """Post-inicialización: validar secretos y crear directorios necesarios"""
+        # --- Validación de secretos ---
+        _INSECURE_DEFAULTS = {"", "CHANGE-ME-IN-PRODUCTION-PLEASE"}
+
+        if self.is_production:
+            # En producción, SECRET_KEY DEBE ser proporcionada explícitamente
+            if self.SECRET_KEY in _INSECURE_DEFAULTS:
+                raise ValueError(
+                    "SECRET_KEY no está configurada. "
+                    "Defina una clave segura en la variable de entorno SECRET_KEY "
+                    "antes de ejecutar en producción."
+                )
+            if not self.POSTGRES_PASSWORD:
+                raise ValueError(
+                    "POSTGRES_PASSWORD no está configurada. "
+                    "Defina la contraseña de la base de datos en la variable de entorno "
+                    "POSTGRES_PASSWORD antes de ejecutar en producción."
+                )
+            if self.DEBUG:
+                raise ValueError(
+                    "DEBUG está activado en producción. "
+                    "Defina DEBUG=False en las variables de entorno "
+                    "antes de ejecutar en producción."
+                )
+        else:
+            # En desarrollo/testing, generar SECRET_KEY segura si no fue configurada
+            if self.SECRET_KEY in _INSECURE_DEFAULTS:
+                object.__setattr__(self, "SECRET_KEY", secrets.token_hex(32))
+
         # Crear directorios si no existen
         self.STORAGE_PATH.mkdir(parents=True, exist_ok=True)
         self.ALGORITHMS_PATH.mkdir(parents=True, exist_ok=True)

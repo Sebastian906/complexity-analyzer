@@ -69,11 +69,11 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
         # Handler 1: Console Output (stdout)
         logger.add(
             sys.stdout,
-            format=settings.LOG_FORMAT,
-            level=settings.LOG_LEVEL,
+            format=_settings.LOG_FORMAT,
+            level=_settings.LOG_LEVEL,
             colorize=True,
             backtrace=True,
-            diagnose=True,
+            diagnose=False,  # No exponer variables en tracebacks fuera de desarrollo
         )
         # Handler 2: Archivo de Log General
         logger.add(
@@ -89,11 +89,11 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
             retention=_settings.LOG_RETENTION,
             compression=_settings.LOG_COMPRESSION,
             backtrace=True,
-            diagnose=True,
+            diagnose=False,  # No exponer variables en tracebacks fuera de desarrollo
             enqueue=True,  # Thread-safe
         )
         # Handler 3: Archivo de Errores (solo ERROR y CRITICAL)
-        error_log_path = settings.LOG_FILE_PATH.parent / "errors.log"
+        error_log_path = _settings.LOG_FILE_PATH.parent / "errors.log"
         logger.add(
             error_log_path,
             format=(
@@ -108,12 +108,12 @@ def setup_logger(name: Optional[str] = None) -> logger: # type: ignore
             retention="90 days",
             compression="zip",
             backtrace=True,
-            diagnose=True,
+            diagnose=False,  # No exponer variables en tracebacks fuera de desarrollo
             enqueue=True,
         )
         # Handler 4: Archivo de Performance (si está habilitado)
         if getattr(_settings, "ENABLE_PROFILING", False):
-            performance_log_path = settings.LOG_FILE_PATH.parent / "performance.log"
+            performance_log_path = _settings.LOG_FILE_PATH.parent / "performance.log"
             logger.add(
                 performance_log_path,
                 format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {message}",

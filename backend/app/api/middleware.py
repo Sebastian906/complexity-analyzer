@@ -133,8 +133,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Verificar rate limits antes de procesar request"""
-        # Si está deshabilitado, pasar directo
-        if not settings.RATE_LIMIT_ENABLED:
+        # Si está deshabilitado o en modo debug/testing, pasar directo
+        if not settings.RATE_LIMIT_ENABLED or settings.DEBUG:
             return await call_next(request)
         
         # Obtener IP del cliente
