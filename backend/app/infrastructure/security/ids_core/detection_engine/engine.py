@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.ensemble import IsolationForest
+from sklearn.ensemble import IsolationForest # pyright: ignore[reportMissingModuleSource]
 
 class DetectionEngine:
     """Combina la detección basada en firmas y anomalías.
