@@ -40,6 +40,9 @@ from app.utils.logger import setup_logger
 # Configurar logger
 logger = setup_logger(__name__)
 
+# Variable global del monitor IDS (singleton, accedido desde security.py)
+_ids_monitor = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
@@ -99,6 +102,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 logger.info("Redis conectado")
             except ImportError:
                 logger.warning("Redis client no disponible - módulo no implementado")
+
+        # Inicialización del IDS (si está habilitado)
+        if settings.IDS_ENABLED:
+            try:
+                global _ids_monitor
+                from app.infrastructure.security.network_monitor import NetworkMonitor
+                _ids_monitor = NetworkMonitor()
+                _ids_monitor.start_monitoring(
+                    interface=settings.IDS_INTERFACE or None
+                )
+                logger.info("IDS iniciado correctamente")
+            except Exception as exc:
+                # El IDS es auxiliar: nunca debe impedir el arranque
+                logger.warning(f"IDS no pudo iniciarse (no es crítico): {exc}")
+                _ids_monitor = None
+        else:
+            logger.info("IDS deshabilitado (IDS_ENABLED=false en configuración)")
         
         # Verificar APIs de LLMs (sin revelar presencia de claves en logs)
         if settings.ANTHROPIC_API_KEY:
@@ -162,6 +182,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 logger.info("Redis desconectado")
             except ImportError:
                 pass
+
+        # Cerrar IDS
+        if _ids_monitor is not None:
+            _ids_monitor.stop_monitoring()
+            logger.info("IDS detenido correctamente")
         
         logger.info("Aplicación cerrada correctamente")
         
@@ -195,6 +220,11 @@ app.add_middleware(
 
 # Compresión GZip
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# IDS Middleware (solo si está habilitado)
+if settings.IDS_ENABLED:
+    from app.api.middleware import IDSMiddleware
+    app.add_middleware(IDSMiddleware, network_monitor=_ids_monitor)
 
 # Security Headers (X-Content-Type-Options, X-Frame-Options, HSTS, CSP)
 app.add_middleware(SecurityHeadersMiddleware)

@@ -249,6 +249,14 @@ class Settings(BaseSettings):
     
     # Selección de Base de Datos
     DATABASE_TYPE: Literal["mongodb", "postgresql"] = "mongodb"
+
+    # Sistema de Detección de Intrusiones ─────────────────────────────────
+    IDS_ENABLED: bool = Field(default=True)
+    IDS_INTERFACE: str = Field(default="")          # vacío = interfaz default del SO
+    IDS_THREAT_TTL_SECONDS: int = Field(default=300)
+    IDS_MAX_THREATS_BEFORE_BLOCK: int = Field(default=10)
+    IDS_PERSIST_TO_MONGODB: bool = Field(default=False)
+    IDS_WINDOW_SECONDS: float = Field(default=10.0)  # ventana de análisis de tráfico
     
     # Configuración de Pydantic Settings
     model_config = SettingsConfigDict(

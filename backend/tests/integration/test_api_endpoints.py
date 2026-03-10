@@ -19,6 +19,9 @@ Endpoints testeados:
 - POST /api/v1/health/profiling/export - Exportar reporte profiling
 - POST /api/v1/health/profiling/reset - Reiniciar stats profiling
 - GET /api/v1/health/status - Estado detallado del sistema
+- GET /api/v1/security/ids/status - Estado del IDS
+- GET /api/v1/security/ids/threats - Amenazas activas
+- GET /api/v1/security/ids/check/{ip} - Verificar IP
 """
 
 import pytest
@@ -1075,6 +1078,75 @@ class TestHealthProfilingEndpoints:
         assert "application" in data
         assert "services" in data
         assert "llms" in data
+
+
+# TESTS: Security / IDS Endpoints
+class TestSecurityIDSEndpoints:
+    """Tests de endpoints de seguridad IDS"""
+
+    def test_ids_status_endpoint(self, client):
+        """GET /api/v1/security/ids/status debe retornar estado del IDS"""
+        response = client.get("/api/v1/security/ids/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "available" in data
+        # IDS_ENABLED=False por defecto → available=False
+        if not data["available"]:
+            assert "reason" in data
+
+    def test_ids_status_reflects_monitor_state(self, client):
+        """Status refleja si el monitor IDS se inicializó correctamente"""
+        response = client.get("/api/v1/security/ids/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["available"], bool)
+        if data["available"]:
+            assert "active_threats" in data
+        else:
+            assert data["reason"] == "IDS deshabilitado o no inicializado"
+
+    def test_ids_threats_endpoint(self, client):
+        """GET /api/v1/security/ids/threats debe retornar lista de amenazas"""
+        response = client.get("/api/v1/security/ids/threats")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "available" in data
+        assert "count" in data
+        assert "threats" in data
+        assert isinstance(data["threats"], list)
+
+    def test_ids_threats_empty_without_traffic(self, client):
+        """Sin tráfico registrado, la lista de amenazas debe estar vacía"""
+        response = client.get("/api/v1/security/ids/threats")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["available"], bool)
+        assert data["count"] == 0
+        assert data["threats"] == []
+
+    def test_ids_check_ip_endpoint(self, client):
+        """GET /api/v1/security/ids/check/{ip} debe verificar IP"""
+        response = client.get("/api/v1/security/ids/check/192.168.1.1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ip"] == "192.168.1.1"
+        assert "blocked" in data
+        assert "available" in data
+
+    def test_ids_check_ip_not_blocked_by_default(self, client):
+        """IP arbitraria no debe estar bloqueada si no hubo amenazas"""
+        response = client.get("/api/v1/security/ids/check/10.0.0.1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ip"] == "10.0.0.1"
+        assert data["blocked"] is False
+        assert isinstance(data["available"], bool)
 
 
 # TESTS: Error Handling

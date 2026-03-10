@@ -490,3 +490,63 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                     }
                 }
             )
+
+# IDS MIDDLEWARE
+class IDSMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware de detección de intrusiones.
+
+    Consulta el NetworkMonitor antes de procesar cada request HTTP:
+    - Bloquea IPs marcadas por el IDS.
+    - Es totalmente no-bloqueante: si el monitor falla, la request continúa.
+
+    Se añade en main.py solo cuando IDS_ENABLED=true.
+    """
+
+    # Rutas excluidas del bloqueo IDS (health checks para evitar falsos positivos)
+    _BYPASS_PATHS = {"/api/v1/health", "/", "/docs", "/redoc", "/openapi.json"}
+
+    def __init__(self, app: ASGIApp, network_monitor=None):
+        super().__init__(app)
+        self._monitor = network_monitor
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Si no hay monitor activo, pasar directo
+        if self._monitor is None:
+            return await call_next(request)
+
+        # Excluir rutas internas del bloqueo
+        if request.url.path in self._BYPASS_PATHS:
+            return await call_next(request)
+
+        client_ip = self._get_client_ip(request)
+
+        try:
+            if self._monitor.is_ip_blocked(client_ip):
+                logger.warning(f"[IDS] Acceso bloqueado para IP: {client_ip}")
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "success": False,
+                        "error": {
+                            "type":    "IPBlocked",
+                            "message": "Acceso denegado por política de seguridad de red",
+                        },
+                    },
+                )
+        except Exception as exc:
+            # Nunca dejar que el IDS bloquee la aplicación principal
+            logger.debug(f"[IDS] Error consultando monitor: {exc}")
+
+        return await call_next(request)
+
+    @staticmethod
+    def _get_client_ip(request: Request) -> str:
+        """Extrae la IP real del cliente respetando proxies."""
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip
+        return request.client.host if request.client else "unknown"
