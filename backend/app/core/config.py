@@ -214,11 +214,6 @@ class Settings(BaseSettings):
     LOG_RETENTION: str = "30 days"
     LOG_COMPRESSION: str = "zip"
     
-    # Profiling
-    ENABLE_PROFILING: bool = False
-    PROFILE_MEMORY: bool = False
-    PROFILE_EXECUTION_TIME: bool = True
-    
     # Monitoreo
     ENABLE_PROMETHEUS: bool = False
     PROMETHEUS_PORT: int = 9090

@@ -161,7 +161,7 @@ class PatternDetector:
     ) -> Optional[PatternMatch]:
         """
         Detecta un patrón específico.
-        
+
         Args:
             ast: AST del algoritmo
             pattern_type: Tipo de patrón a detectar
@@ -178,7 +178,7 @@ class PatternDetector:
     def get_available_patterns(self) -> List[str]:
         """
         Retorna lista de patrones que pueden ser detectados.
-        
+
         Returns:
             Lista de nombres de patrones
         """
@@ -186,133 +186,69 @@ class PatternDetector:
 
     def _run_detectors(self, ast: ASTNode) -> List[PatternMatch]:
         """
-        Ejecuta todos los detectores.
-        
+        Ejecuta todos los detectores de forma secuencial.
+
+        Los detectores son operaciones CPU-bound sobre estructuras en memoria
+        (microsegundos cada uno). La paralelización con asyncio añade overhead
+        sin beneficio real y genera problemas con event loops en tests y en
+        contextos async existentes (FastAPI).
+
         Args:
             ast: AST del algoritmo
-        
+
         Returns:
             Lista de todos los matches detectados
         """
         patterns = []
 
-        # Solo habilitar debug console en modo desarrollo/debug
+        # Debug console solo en desarrollo — se importa una vez por llamada
+        # solo si DEBUG está activo para evitar overhead en producción
         debug_console = None
         if settings.DEBUG:
-            from rich.console import Console
-            debug_console = Console()
-            debug_console.print("\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]")
-            debug_console.print("=" * 70)
+            try:
+                from rich.console import Console
+                debug_console = Console()
+                debug_console.print(
+                    "\n[bold cyan]Ejecutando detectores de patrones:[/bold cyan]"
+                )
+                debug_console.print("=" * 70)
+            except ImportError:
+                pass  # rich no disponible, continuar sin debug output
 
-        # PARALELIZACIÓN: Ejecutar todos los detectores concurrentemente
-        import asyncio
-        
-        async def run_detector_async(detector):
-            """Wrapper async para cada detector"""
+        for detector in self.detectors:
             try:
                 match = detector.detect(ast)
 
                 if match:
-                    # Debug: mostrar patrón detectado
-                    confidence = match.confidence
-                    indicators_found = len(match.indicators_found)
-                    total_indicators = match.total_indicators
                     if debug_console:
                         debug_console.print(
                             f"[green]✓[/green] {detector.pattern_name:30s} | "
-                            f"Confianza: [green]{confidence:5.1%}[/green] | "
-                            f"Indicadores: {indicators_found}/{total_indicators}"
+                            f"Confianza: [green]{match.confidence:5.1%}[/green] | "
+                            f"Indicadores: {len(match.indicators_found)}/{match.total_indicators}"
                         )
-                    return match
+                    patterns.append(match)
                 else:
-                    # Debug: patrones no detectados
                     if debug_console:
                         debug_console.print(
                             f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
                         )
-                    return None
+
             except Exception as e:
                 error_msg = str(e)[:50]
                 if debug_console:
                     debug_console.print(
-                        f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
+                        f"[yellow]{detector.pattern_name:30s} | "
+                        f"ERROR:[/yellow] [red]{error_msg}[/red]"
                     )
                 logger.error(f"Error en detector {detector.pattern_name}: {e}")
-                return None
-
-        # Ejecutar todos los detectores en paralelo
-        try:
-            # Verificar si ya hay un event loop corriendo
-            try:
-                loop = asyncio.get_running_loop()
-                # Si llegamos aquí, ya hay un loop corriendo (en tests)
-                # Ejecutar de forma secuencial en este caso
-                import asyncio
-                results = []
-                for detector in self.detectors:
-                    # Crear una nueva tarea en el loop existente
-                    task = run_detector_async(detector)
-                    result = asyncio.create_task(task) if hasattr(asyncio, 'create_task') else task
-                    # Como estamos en sync, necesitamos await manual
-                    # Pero no podemos hacer await aquí, así que fallback a sync
-                    try:
-                        match = detector.detect(ast)
-                        if match:
-                            confidence = match.confidence
-                            indicators_found = len(match.indicators_found)
-                            total_indicators = match.total_indicators
-                            if debug_console:
-                                debug_console.print(
-                                    f"[green]✓[/green] {detector.pattern_name:30s} | "
-                                    f"Confianza: [green]{confidence:5.1%}[/green] | "
-                                    f"Indicadores: {indicators_found}/{total_indicators}"
-                                )
-                            results.append(match)
-                        else:
-                            if debug_console:
-                                debug_console.print(
-                                    f"[dim]✗ {detector.pattern_name:30s} | No detectado[/dim]"
-                                )
-                    except Exception as e:
-                        error_msg = str(e)[:50]
-                        if debug_console:
-                            debug_console.print(
-                                f"[yellow]{detector.pattern_name:30s} | ERROR:[/yellow] [red]{error_msg}[/red]"
-                            )
-                        logger.error(f"Error en detector {detector.pattern_name}: {e}")
-
-                patterns = results
-
-            except RuntimeError:
-                # No hay loop corriendo, crear uno nuevo
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-                try:
-                    # Ejecutar detectores en paralelo
-                    tasks = [run_detector_async(detector) for detector in self.detectors]
-                    results = loop.run_until_complete(asyncio.gather(*tasks))
-
-                    # Filtrar None
-                    patterns = [r for r in results if r is not None]
-                finally:
-                    loop.close()
-
-        except Exception as e:
-            # Fallback a ejecución secuencial si falla
-            logger.warn(f"Paralelización falló, usando modo secuencial: {e}")
-            patterns = []
-            for detector in self.detectors:
-                try:
-                    match = detector.detect(ast)
-                    if match:
-                        patterns.append(match)
-                except Exception:
-                    continue
+                # Continuar con el siguiente detector — un fallo no debe
+                # detener la detección completa
 
         if debug_console:
             debug_console.print("=" * 70)
-            debug_console.print(f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n")
+            debug_console.print(
+                f"[bold]Total de patrones detectados: {len(patterns)}[/bold]\n"
+            )
 
         return patterns
 
@@ -377,17 +313,17 @@ class PatternDetector:
         return " | ".join(summary_parts)
 
     def _build_metadata(
-        self, 
+        self,
         patterns: List[ScoredPattern],
         raw_patterns: List[PatternMatch]
     ) -> Dict[str, Any]:
         """
-        Construye metadata del análisis incluyendo estructuras detectadas
-        
+        Construye metadata del análisis incluyendo estructuras detectadas.
+
         Args:
             patterns: Patrones con scoring
             raw_patterns: Patrones originales con metadata
-        
+
         Returns:
             Diccionario con metadata completo
         """
@@ -395,12 +331,11 @@ class PatternDetector:
         structures = []
         for raw_match in raw_patterns:
             if hasattr(raw_match, 'metadata') and isinstance(raw_match.metadata, dict):
-                # Buscar estructuras en metadata
                 if 'data_structures' in raw_match.metadata:
                     structures.extend(raw_match.metadata['data_structures'])
                 if 'structures' in raw_match.metadata:
                     structures.extend(raw_match.metadata['structures'])
-        
+
         return {
             "total_patterns_detected": len(patterns),
             "patterns_by_type": {
@@ -409,7 +344,7 @@ class PatternDetector:
             },
             "highest_confidence": patterns[0].final_score if patterns else 0.0,
             "detection_complete": True,
-            "structures": structures,  # Agregar estructuras a metadata
+            "structures": structures,
             "raw_pattern_count": len(raw_patterns)
         }
 

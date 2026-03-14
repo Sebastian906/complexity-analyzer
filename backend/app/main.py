@@ -187,7 +187,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         if _ids_monitor is not None:
             _ids_monitor.stop_monitoring()
             logger.info("IDS detenido correctamente")
-        
+
+        # Cerrar pools
+        from app.parallel.worker_pools import shutdown_all_pools
+        shutdown_all_pools(wait=True)
+        logger.info("Worker pools cerrados")
+
         logger.info("Aplicación cerrada correctamente")
         
     except Exception as e:
