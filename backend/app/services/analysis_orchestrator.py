@@ -21,6 +21,7 @@ from app.core.visualization import (
     render_diagram,
     RenderFormat,
 )
+from app.core.visualization.diagram_renderer import render_diagram_async
 from app.core.exceptions import (
     ParserException,
     AnalyzerException,
@@ -61,8 +62,12 @@ from app.schemas import (
     TimingMetadata,
     ConfidenceLevelEnum,
 )
+from app.services.cache_service import (
+    CacheKey,
+    get_cache_service,
+    generate_cache_key,
+)
 from app.utils.logger import setup_logger
-
 from app.profiling import get_performance_monitor
 
 # Import TYPE_CHECKING: solo para anotaciones, no genera importación circular
@@ -102,7 +107,7 @@ class AnalysisOrchestrator:
         self.pattern_detector = pattern_detector or PatternDetector()
         self.structure_identifier = structure_identifier or StructureIdentifier()
 
-        # ========== PROFILING INIT ==========
+        # PROFILING INIT
         # Obtener monitor de performance
         self.profiling_enabled = settings.APP_ENV in ["development", "staging"]
         if self.profiling_enabled:
@@ -110,7 +115,6 @@ class AnalysisOrchestrator:
             logger.info("AnalysisOrchestrator con profiling habilitado")
         else:
             self.monitor = None
-        # ====================================
 
         logger.info("AnalysisOrchestrator inicializado")
 
@@ -134,29 +138,54 @@ class AnalysisOrchestrator:
             try:
                 # Lazy import para evitar circular imports
                 from app.infrastructure.agents.coordinator_agent import CoordinatorAgent
-                logger.info('Delegado al sistema multiagente (LangGraph)')
+                logger.info("Delegado al sistema multiagente (LangGraph)")
                 coordinator = CoordinatorAgent(use_llm=True)
                 agent_result = await coordinator.execute_pipeline(request.code)
                 return self._map_agent_result(agent_result, request)
             except Exception as e:
-                logger.error(f'Error en sistemas multiagente: {e}. Usando análisis directo.')
+                logger.error(f"Error en sistema multiagente: {e}. Usando análisis directo.")
                 # Fallback automático al análisis directo si el pipeline falla
+
+        # Verificar cache antes de ejecutar el pipeline
+        cache = get_cache_service()
+        cache_key = generate_cache_key(
+            CacheKey.ANALYSIS,
+            request.code,
+            analyze_complexity=request.analyze_complexity,
+            analyze_patterns=request.analyze_patterns,
+            analyze_structures=request.analyze_structures,
+            generate_visualizations=request.generate_visualizations,
+        )
+
+        cached_result = await cache.get(cache_key)
+        if cached_result is not None:
+            logger.info(f"Cache HIT para análisis completo")
+            return cached_result
 
         # PROFILING: Monitorear análisis completo
         if self.profiling_enabled and self.monitor:
-            with self.monitor.monitor("analyze_complete", module="orchestrator") as metrics:
+            with self.monitor.monitor(
+                "analyze_complete", module="orchestrator"
+            ) as metrics:
                 result = await self._execute_analysis(request)
-                
-                # Log métricas si la operación fue lenta (execution_time_ms > 2000ms = 2s)
+
                 if metrics and metrics.execution_time_ms > 2000:
                     logger.warning(
-                        f"Análisis completo lento: {metrics.execution_time_ms/1000:.2f}s, "
+                        f"Análisis completo lento: "
+                        f"{metrics.execution_time_ms/1000:.2f}s, "
                         f"memoria: {metrics.memory_delta_mb:.2f}MB"
                     )
-                
-                return result
         else:
-            return await self._execute_analysis(request)
+            result = await self._execute_analysis(request)
+
+        # Almacenar en cache si el análisis fue exitoso
+        if result.success:
+            await cache.set(
+                cache_key, result, ttl=settings.CACHE_TTL_ANALYSIS
+            )
+            logger.debug("Resultado almacenado en caché")
+
+        return result
 
     async def _execute_analysis(
         self,
@@ -179,7 +208,7 @@ class AnalysisOrchestrator:
         patterns_result: Optional[PatternDetectionResult] = None
         structures_result: Optional[StructureDetectionResult] = None
         visualizations: list[VisualizationResult] = []
-        
+
         errors = []
         warnings = []
 
@@ -187,7 +216,7 @@ class AnalysisOrchestrator:
             # PASO 1: PARSING
             logger.info("Paso 1: Parsing")
             
-            # ========== PROFILING: Parsing ==========
+            # PROFILING: Parsing 
             if self.profiling_enabled and self.monitor:
                 with self.monitor.monitor("parse_code", module="parser"):
                     ast, algorithm_info = await self._parse_code(request, errors)
@@ -199,13 +228,13 @@ class AnalysisOrchestrator:
                 return self._create_result(
                     started_at=started_at,
                     start_time=start_time,
-                    algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                    algorithm_name=(algorithm_info.name if algorithm_info else "unknown"),
                     algorithm_info=algorithm_info,
                     errors=errors,
                     warnings=warnings,
                 )
 
-            # ========== PASOS 2-4: ANÁLISIS PARALELO ==========
+            # PASOS 2-4: ANÁLISIS PARALELO
             # Estos pasos son independientes y pueden ejecutarse concurrentemente
             logger.info("Ejecutando análisis paralelo: complejidad, patrones, estructuras")
 
@@ -219,9 +248,7 @@ class AnalysisOrchestrator:
                     if self.profiling_enabled and self.monitor:
                         with self.monitor.monitor("complexity_analysis", module="analyzer"):
                             return await self._analyze_complexity(ast, request, errors, warnings)
-                    else:
-                        return await self._analyze_complexity(ast, request, errors, warnings)
-
+                    return await self._analyze_complexity(ast, request, errors, warnings)
                 tasks.append(analyze_complexity_task())
                 task_names.append("complexity")
             else:
@@ -234,9 +261,7 @@ class AnalysisOrchestrator:
                     if self.profiling_enabled and self.monitor:
                         with self.monitor.monitor("pattern_detection", module="patterns"):
                             return await self._detect_patterns_safe(ast, request, warnings)
-                    else:
-                        return await self._detect_patterns_safe(ast, request, warnings)
-
+                    return await self._detect_patterns_safe(ast, request, warnings)
                 tasks.append(detect_patterns_task())
                 task_names.append("patterns")
             else:
@@ -249,9 +274,7 @@ class AnalysisOrchestrator:
                     if self.profiling_enabled and self.monitor:
                         with self.monitor.monitor("structure_detection", module="structures"):
                             return await self._detect_structures_safe(ast, request, warnings)
-                    else:
-                        return await self._detect_structures_safe(ast, request, warnings)
-
+                    return await self._detect_structures_safe(ast, request, warnings)
                 tasks.append(detect_structures_task())
                 task_names.append("structures")
             else:
@@ -266,9 +289,15 @@ class AnalysisOrchestrator:
             logger.info(f"Análisis paralelo completado en {parallel_time:.3f}s")
 
             # Extraer resultados
-            complexity_result = results[0] if not isinstance(results[0], Exception) else None
-            patterns_result = results[1] if not isinstance(results[1], Exception) else None
-            structures_result = results[2] if not isinstance(results[2], Exception) else None
+            complexity_result = (
+                results[0] if not isinstance(results[0], Exception) else None
+            )
+            patterns_result = (
+                results[1] if not isinstance(results[1], Exception) else None
+            )
+            structures_result = (
+                results[2] if not isinstance(results[2], Exception) else None
+            )
 
             # Log errores si los hubo
             for i, result in enumerate(results):
@@ -276,7 +305,7 @@ class AnalysisOrchestrator:
                     logger.error(f"Error en {task_names[i]}: {result}")
                     warnings.append(f"{task_names[i]} falló: {str(result)}")
 
-            # ========== PASO 5: VISUALIZACIONES (OPCIONAL) ==========
+            # PASO 5: VISUALIZACIONES
             if request.generate_visualizations and ast:
                 logger.info("Paso 5: Generación de visualizaciones")
 
@@ -294,7 +323,7 @@ class AnalysisOrchestrator:
             return self._create_result(
                 started_at=started_at,
                 start_time=start_time,
-                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_name=(algorithm_info.name if algorithm_info else "unknown"),
                 algorithm_info=algorithm_info,
                 complexity=complexity_result,
                 space_complexity=space_result,
@@ -314,7 +343,7 @@ class AnalysisOrchestrator:
             return self._create_result(
                 started_at=started_at,
                 start_time=start_time,
-                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_name=(algorithm_info.name if algorithm_info else "unknown"),
                 algorithm_info=algorithm_info,
                 errors=errors,
                 warnings=warnings,
@@ -326,7 +355,7 @@ class AnalysisOrchestrator:
             return self._create_result(
                 started_at=started_at,
                 start_time=start_time,
-                algorithm_name=algorithm_info.name if algorithm_info else "unknown",
+                algorithm_name=(algorithm_info.name if algorithm_info else "unknown"),
                 algorithm_info=algorithm_info,
                 errors=errors,
                 warnings=warnings,
@@ -386,12 +415,10 @@ class AnalysisOrchestrator:
                 logger.error("AnalyzerEngine retornó None")
                 errors.append("Analyzer retornó resultado nulo")
                 return None
-            else:
-                # Convertir a schemas
-                return self._build_complexity_analysis(analysis_result)
+            return self._build_complexity_analysis(analysis_result)
 
         except AnalyzerException as e:
-            # CAMBIO CRÍTICO: Agregar a errors en vez de solo warnings
+            # Agregar a errors en vez de solo warnings
             logger.error(f"Error en análisis de complejidad: {e}")
             errors.append(f"Error en análisis de complejidad: {e}")
             # También mantener warning para info adicional
@@ -399,7 +426,7 @@ class AnalysisOrchestrator:
             return None
 
         except Exception as e:
-            # NUEVO: Capturar cualquier otro error
+            # Capturar cualquier otro error
             logger.error(f"Error inesperado en analyzer: {e}", exc_info=True)
             errors.append(f"Error en análisis: {e}")
             return None
@@ -452,11 +479,11 @@ class AnalysisOrchestrator:
         return AlgorithmInfo(
             name=ast.algorithm.name if ast.algorithm else "unknown",
             parameters=parameters,
-            has_recursion=False,  # Detectar del análisis
-            has_loops=True,  # Detectar del análisis
-            max_nesting_depth=0,  # Calcular
+            has_recursion=False,
+            has_loops=True,
+            max_nesting_depth=0,
             total_lines=len(code.splitlines()),
-            total_statements=0,  # Contar del AST
+            total_statements=0,
         )
 
     # Helper Methods - Construcción de Schemas
@@ -468,8 +495,12 @@ class AnalysisOrchestrator:
             theta=analysis_result.theta,
             big_o_class=self._get_complexity_class(analysis_result.big_o),
             omega_class=self._get_complexity_class(analysis_result.omega),
-            theta_class=self._get_complexity_class(analysis_result.theta) if analysis_result.theta else None,
-            explanation=f"Complejidad temporal del algoritmo",
+            theta_class=(
+                self._get_complexity_class(analysis_result.theta)
+                if analysis_result.theta
+                else None
+            ),
+            explanation="Complejidad temporal del algoritmo",
             reasoning=[
                 "Análisis basado en estructura del código",
                 f"Complejidad dominante: {analysis_result.big_o}"
@@ -502,10 +533,10 @@ class AnalysisOrchestrator:
             equation=eq.equation,
             base_case=eq.base_case,
             recursion_pattern=eq.recursion_pattern,
-            a=None,  # Extraer si disponible
+            a=None,
             b=None,
             f_n=None,
-            explanation=f"Ecuación de recurrencia",
+            explanation="Ecuación de recurrencia",
         )
 
     def _build_line_by_line(self, line_by_line, dominant_complexity: str) -> LineByLineAnalysis:
@@ -513,7 +544,7 @@ class AnalysisOrchestrator:
         lines = [
             LineExecution(
                 line_number=line.line_number,
-                code=getattr(line, 'code', getattr(line, 'statement', '')),  
+                code=getattr(line, 'code', getattr(line, 'statement', '')),
                 execution_count=line.execution_count,
                 statement_type=line.statement_type,
                 complexity_contribution=line.complexity_contribution,
@@ -527,7 +558,7 @@ class AnalysisOrchestrator:
             lines=lines,
             dominant_complexity=dominant_complexity,
             total_lines=len(lines),
-            summary=f"Análisis línea por línea completo",
+            summary="Análisis línea por línea completo",
         )
 
     def _detect_patterns(
@@ -558,119 +589,30 @@ class AnalysisOrchestrator:
                 metadata={}
             )
 
-        # Convertir ScoredPattern del core a PatternMatch del schema
-        patterns_found = []
-        for scored in result.all_patterns:  # Usar all_patterns
-            pattern_match = PatternMatch(
-                pattern_type=scored.pattern.pattern_type,
-                pattern_name=scored.pattern.pattern_name,
-                confidence=scored.pattern.confidence,
-                confidence_level=ConfidenceLevelEnum(scored.pattern.confidence_level.value),
-                indicators_found=[
-                    PatternIndicator(
-                        name=ind.name,
-                        description=ind.description,
-                        found=ind.found,
-                        weight=ind.weight,
-                        evidence=ind.evidence,
-                        location=ind.location,
-                    )
-                    for ind in scored.pattern.indicators_found
-                ],
-                indicators_missing=[
-                    PatternIndicator(
-                        name=ind.name,
-                        description=ind.description,
-                        found=ind.found,
-                        weight=ind.weight,
-                        evidence=ind.evidence,
-                        location=ind.location,
-                    )
-                    for ind in scored.pattern.indicators_missing
-                ],
-                reasoning=scored.pattern.reasoning,
-                typical_complexity=scored.pattern.typical_complexity,
-                metadata=scored.pattern.metadata,
+        def _convert_indicator(ind) -> PatternIndicator:
+            return PatternIndicator(
+                name=ind.name,
+                description=ind.description,
+                found=ind.found,
+                weight=ind.weight,
+                evidence=ind.evidence,
+                location=ind.location,
             )
-            patterns_found.append(pattern_match)
 
-        # Convertir scored_patterns (con scoring)
-        scored_patterns = [
-            ScoredPattern(
+        def _convert_scored(sp) -> ScoredPattern:
+            return ScoredPattern(
                 pattern=PatternMatch(
                     pattern_type=sp.pattern.pattern_type,
                     pattern_name=sp.pattern.pattern_name,
                     confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
+                    confidence_level=ConfidenceLevelEnum(
+                        sp.pattern.confidence_level.value
+                    ),
                     indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
+                        _convert_indicator(i) for i in sp.pattern.indicators_found
                     ],
                     indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
-                    ],
-                    reasoning=sp.pattern.reasoning,
-                    typical_complexity=sp.pattern.typical_complexity,
-                    metadata=sp.pattern.metadata,
-                ),
-                raw_score=getattr(sp, 'raw_score', sp.pattern.confidence),
-                adjusted_score=getattr(sp, 'adjusted_score', sp.final_score),
-                final_score=getattr(sp, 'final_score', sp.pattern.confidence),
-                confidence_bonus=getattr(sp, 'confidence_bonus', 0.0),
-                missing_penalty=getattr(sp, 'missing_penalty', 0.0),
-                conflict_penalty=getattr(sp, 'conflict_penalty', 0.0),
-                conflicts=getattr(sp, 'conflicts', []),
-                rank=getattr(sp, 'rank', 0),
-            )
-            for sp in result.all_patterns  # Usar all_patterns
-        ]
-
-        # Convertir primary_pattern
-        primary_pattern = None
-        if result.primary_pattern:
-            sp = result.primary_pattern
-            primary_pattern = ScoredPattern(
-                pattern=PatternMatch(
-                    pattern_type=sp.pattern.pattern_type,
-                    pattern_name=sp.pattern.pattern_name,
-                    confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
-                    indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
-                    ],
-                    indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
+                        _convert_indicator(i) for i in sp.pattern.indicators_missing
                     ],
                     reasoning=sp.pattern.reasoning,
                     typical_complexity=sp.pattern.typical_complexity,
@@ -686,59 +628,25 @@ class AnalysisOrchestrator:
                 rank=getattr(sp, 'rank', 0),
             )
 
-        # Convertir confident_patterns
+        # Convertir usando el helper para eliminar la triplicación
+        scored_patterns = [_convert_scored(sp) for sp in result.all_patterns]
+        patterns_found = [sp.pattern for sp in scored_patterns]
+        primary_pattern = (
+            _convert_scored(result.primary_pattern)
+            if result.primary_pattern
+            else None
+        )
         confident_patterns = [
-            ScoredPattern(
-                pattern=PatternMatch(
-                    pattern_type=sp.pattern.pattern_type,
-                    pattern_name=sp.pattern.pattern_name,
-                    confidence=sp.pattern.confidence,
-                    confidence_level=ConfidenceLevelEnum(sp.pattern.confidence_level.value),
-                    indicators_found=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_found
-                    ],
-                    indicators_missing=[
-                        PatternIndicator(
-                            name=ind.name,
-                            description=ind.description,
-                            found=ind.found,
-                            weight=ind.weight,
-                            evidence=ind.evidence,
-                            location=ind.location,
-                        )
-                        for ind in sp.pattern.indicators_missing
-                    ],
-                    reasoning=sp.pattern.reasoning,
-                    typical_complexity=sp.pattern.typical_complexity,
-                    metadata=sp.pattern.metadata,
-                ),
-                raw_score=getattr(sp, 'raw_score', sp.pattern.confidence),
-                adjusted_score=getattr(sp, 'adjusted_score', sp.final_score),
-                final_score=getattr(sp, 'final_score', sp.pattern.confidence),
-                confidence_bonus=getattr(sp, 'confidence_bonus', 0.0),
-                missing_penalty=getattr(sp, 'missing_penalty', 0.0),
-                conflict_penalty=getattr(sp, 'conflict_penalty', 0.0),
-                conflicts=getattr(sp, 'conflicts', []),
-                rank=getattr(sp, 'rank', 0),
-            )
-            for sp in result.confident_patterns
+            _convert_scored(sp) for sp in result.confident_patterns
         ]
 
         return PatternDetectionResult(
-            patterns_found=patterns_found,  # Usar patterns_found
+            patterns_found=patterns_found,
             scored_patterns=scored_patterns,
             primary_pattern=primary_pattern,
             confident_patterns=confident_patterns,
             summary=result.summary,
-            pattern_count=len(patterns_found),  # Contar patterns_found
+            pattern_count=len(patterns_found),
             metadata=result.metadata,
         )
 
@@ -782,7 +690,7 @@ class AnalysisOrchestrator:
         return StructureDetectionResult(
             structures_found=structures_found,
             primary_structure=primary_structure,
-            primary_usage=None,  # Implementar si se requiere
+            primary_usage=None,
             summary=result.summary,
         )
 
@@ -798,7 +706,7 @@ class AnalysisOrchestrator:
         # Árbol de recursión
         from app.schemas.analysis_request import VisualizationType
         if VisualizationType.RECURSION_TREE in request.visualization_options.types:
-            if complexity and complexity.has_tight_bound:  # Simplificado
+            if complexity and complexity.has_tight_bound:
                 try:
                     tree_result = generate_recursion_tree(
                         ast,
@@ -806,12 +714,17 @@ class AnalysisOrchestrator:
                         max_depth=request.visualization_options.max_depth
                     )
 
-                    render_format = RenderFormat(request.visualization_options.format)
-                    rendered = render_diagram(tree_result, format=render_format)
+                    render_format = RenderFormat(
+                        request.visualization_options.format
+                    )
+
+                    rendered = await render_diagram_async(
+                        tree_result, format=render_format
+                    )
 
                     content = rendered.content
                     if isinstance(content, bytes):
-                        content = content.decode('utf-8')
+                        content = content.decode("utf-8", errors="replace")
 
                     visualizations.append(
                         VisualizationResult(
@@ -820,11 +733,19 @@ class AnalysisOrchestrator:
                             content=content,
                             file_path=None,
                             statistics={
-                                "recursion_type": tree_result.recursion_type.value,
+                                "recursion_type": (
+                                    tree_result.recursion_type.value
+                                ),
                                 "total_calls": tree_result.total_calls,
                                 "max_depth": tree_result.max_depth,
                             },
-                            metadata={"algorithm_name": ast.algorithm.name if ast.algorithm else "unknown"},
+                            metadata={
+                                "algorithm_name": (
+                                    ast.algorithm.name
+                                    if ast.algorithm
+                                    else "unknown"
+                                )
+                            },
                         )
                     )
                 except Exception as e:
@@ -835,11 +756,14 @@ class AnalysisOrchestrator:
             try:
                 flow_result = generate_execution_flow(ast)
                 render_format = RenderFormat(request.visualization_options.format)
-                rendered = render_diagram(flow_result, format=render_format)
+
+                rendered = await render_diagram_async(
+                    flow_result, format=render_format
+                )
 
                 content = rendered.content
                 if isinstance(content, bytes):
-                    content = content.decode('utf-8')
+                    content = content.decode("utf-8", errors="replace")
 
                 visualizations.append(
                     VisualizationResult(
@@ -848,7 +772,13 @@ class AnalysisOrchestrator:
                         content=content,
                         file_path=None,
                         statistics=flow_result.statistics,
-                        metadata={"algorithm_name": ast.algorithm.name if ast.algorithm else "unknown"},
+                        metadata={
+                            "algorithm_name": (
+                                ast.algorithm.name
+                                if ast.algorithm
+                                else "unknown"
+                            )
+                        },
                     )
                 )
             except Exception as e:
@@ -881,39 +811,28 @@ class AnalysisOrchestrator:
         if warnings is None:
             warnings = []
 
-        # NUEVO: Detectar fallo silencioso
+        # Detectar fallo silencioso
         if not errors and complexity is None:
-            logger.warning("No hay errores pero complexity es None - posible fallo silencioso")
+            logger.warning("No hay errores pero complexity es None — posible fallo silencioso")
             errors.append("Análisis de complejidad no completado")
 
         # Metadata
         metadata = AnalysisMetadata(
-            timing=TimingMetadata(
-                started_at=started_at,
-                # completed_at=completed_at,
-                # duration_ms=duration * 1000,
-            ),
+            timing=TimingMetadata(started_at=started_at),
             resources=None,
             version="1.0.0",
             environment="production",
         )
 
         # Resumen
-        summary = self._generate_summary(
-            algorithm_name,
-            complexity,
-            space_complexity,
-            patterns,
-            structures
-        )
+        summary = self._generate_summary(algorithm_name, complexity, space_complexity, patterns, structures)
 
         # Recomendaciones
         recommendations = self._generate_recommendations(complexity, patterns)
 
         return CompleteAnalysisResult(
             success=len(errors) == 0,
-            message="Análisis completado" if not errors else "Análisis con errores",
-            # timestamp=completed_at,
+            message=("Análisis completado" if not errors else "Análisis con errores"),
             algorithm_name=algorithm_name,
             algorithm_info=algorithm_info,
             complexity=complexity,
@@ -950,11 +869,17 @@ class AnalysisOrchestrator:
 
         if patterns and patterns.primary_pattern:
             primary = patterns.primary_pattern
-            lines.append(f"Patrón: {primary.pattern.pattern_name} ({primary.final_score:.0%})")
+            lines.append(
+                f"Patrón: {primary.pattern.pattern_name} "
+                f"({primary.final_score:.0%})"
+            )
 
         if structures and structures.primary_structure:
             primary = structures.primary_structure
-            lines.append(f"Estructura: {primary.structure_name} ({primary.confidence:.0%})")
+            lines.append(
+                f"Estructura: {primary.structure_name} "
+                f"({primary.confidence:.0%})"
+            )
 
         return "\n".join(lines)
 
@@ -968,7 +893,7 @@ class AnalysisOrchestrator:
 
         if complexity:
             if complexity.big_o_class in [ComplexityClass.EXPONENTIAL, ComplexityClass.FACTORIAL]:
-                recommendations.append("Considerar optimización - complejidad muy alta")
+                recommendations.append("Considerar optimización — complejidad muy alta")
             elif complexity.big_o_class == ComplexityClass.QUADRATIC:
                 recommendations.append("Evaluar algoritmos alternativos de menor complejidad")
 
@@ -979,7 +904,10 @@ class AnalysisOrchestrator:
         if not notation:
             return None
 
-        clean = notation.replace("O(", "").replace(")", "").replace("Ω(", "").replace("Θ(", "")
+        clean = (notation
+                .replace("O(", "").replace(")", "")
+                .replace("Ω(", "").replace("Θ(", "")
+            )
 
         mapping = {
             "1": ComplexityClass.CONSTANT,
@@ -1000,7 +928,7 @@ class AnalysisOrchestrator:
         self,
         agent_result: dict,
         request: CompleteAnalysisRequest
-    ) -> CompleteAnalysisRequest:
+    ) -> CompleteAnalysisResult:
         """
         Convierte el dict de CoordinatorAgent al schema CompleteAnalysisResult.
 
@@ -1011,9 +939,11 @@ class AnalysisOrchestrator:
         """
         from datetime import datetime
         started_at = datetime.utcnow()
-        start_time = __import__('time').time()
-        errors = [e.get('error', str(e)) if isinstance(e, dict) else str(e)
-                  for e in agent_result.get('errors', [])]
+        start_time = time.time()
+        errors = [
+            e.get('error', str(e)) if isinstance(e, dict) else str(e)
+            for e in agent_result.get('errors', [])
+        ]
         warnings = []
 
         # Complejidad
@@ -1029,8 +959,9 @@ class AnalysisOrchestrator:
                 theta_class=self._get_complexity_class(raw_complexity.get('theta', '')),
                 explanation='Complejidad validada por sistema multiagente',
                 reasoning=[
-                    'Analisís realizado por ComplexityAgent',
-                    f"Validación LLM: {raw_complexity.get('llm_validation', {}).get('big_o', 'N/A')}"
+                    'Análisis realizado por ComplexityAgent',
+                    f"Validación LLM: "
+                    f"{raw_complexity.get('llm_validation', {}).get('big_o', 'N/A')}"
                 ],
                 has_tight_bound=raw_complexity.get('theta') is not None,
             )
@@ -1041,8 +972,7 @@ class AnalysisOrchestrator:
         if raw_patterns.get('primary_pattern'):
             # Reutilizar _detect_patterns si tenemos el AST disponible,
             # o construir un PatternDetectionResult mínimo desde el dict.
-            from app.schemas import PatternDetectionResult as PDR
-            patterns_schema = PDR(
+            patterns_schema = PatternDetectionResult(
                 patterns_found=[],
                 scored_patterns=[],
                 primary_pattern=None,
@@ -1056,8 +986,7 @@ class AnalysisOrchestrator:
         structures_schema = None
         raw_structures = agent_result.get('structures') or {}
         if raw_structures.get('primary_structure'):
-            from app.schemas import StructureDetectionResult as SDR
-            structures_schema = SDR(
+            structures_schema = StructureDetectionResult(
                 structures_found=[],
                 primary_structure=None,
                 primary_usage=None,
@@ -1070,7 +999,7 @@ class AnalysisOrchestrator:
             started_at=started_at,
             start_time=start_time,
             algorithm_name=algorithm_name,
-            algorithm_info=None,   # No disponible desde pipeline de agentes
+            algorithm_info=None,
             complexity=complexity_schema,
             patterns=patterns_schema,
             structures=structures_schema,
