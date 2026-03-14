@@ -43,6 +43,35 @@ from app.core.exceptions import (
     ValidationException,
 )
 
+import json
+
+
+def _normalize_cached_analysis(cached):
+    """Normaliza el valor retornado por el cache para los objetos de análisis.
+
+    Puede ser:
+    - None
+    - Un Pydantic model (con atributos)
+    - Un dict (si el backend retornó dict)
+    - Un str (si el backend serializó a JSON o a str)
+
+    Retorna: dict o el objeto original (si no puede parsearse)
+    """
+    if cached is None:
+        return None
+    # Si es string, intentar deserializar JSON
+    if isinstance(cached, str):
+        try:
+            parsed = json.loads(cached)
+            return parsed
+        except Exception:
+            return cached
+    # Si es dict, devolver tal cual
+    if isinstance(cached, dict):
+        return cached
+    # Si es objeto con atributos, devolver tal cual
+    return cached
+
 # FIXTURES
 @pytest.fixture
 def bubble_sort_code():
@@ -618,7 +647,12 @@ class TestCacheServiceIntegration:
         
         cached = await cache_service.get(cache_key)
         assert cached is not None
-        assert cached.complexity.big_o == result.complexity.big_o
+        cached_norm = _normalize_cached_analysis(cached)
+        # cached_norm puede ser dict o model
+        if isinstance(cached_norm, dict):
+            assert cached_norm.get("complexity", {}).get("big_o") == result.complexity.big_o
+        else:
+            assert getattr(cached_norm, "complexity").big_o == result.complexity.big_o
     
     @pytest.mark.asyncio
     async def test_cache_avoids_redundant_analysis(
@@ -647,7 +681,11 @@ class TestCacheServiceIntegration:
         cached_result = await cache_service.get(cache_key)
         
         assert cached_result is not None
-        assert cached_result.complexity.big_o == result1.complexity.big_o
+        cached_norm = _normalize_cached_analysis(cached_result)
+        if isinstance(cached_norm, dict):
+            assert cached_norm.get("complexity", {}).get("big_o") == result1.complexity.big_o
+        else:
+            assert getattr(cached_norm, "complexity").big_o == result1.complexity.big_o
     
     @pytest.mark.asyncio
     async def test_cache_clears_expired_entries(
@@ -723,7 +761,21 @@ class TestEndToEndIntegration:
             
             await cache_service.set(cache_key, analysis_result, cache_type="analysis")
         else:
-            analysis_result = cached
+            cached_norm = _normalize_cached_analysis(cached)
+            if isinstance(cached_norm, dict):
+                # reconstruir un objeto mínimo con lo que necesitamos
+                class _Minimal:
+                    pass
+                ana = _Minimal()
+                # construir nested minimal complexity object
+                comp = type("C", (), {})()
+                comp.big_o = cached_norm.get("complexity", {}).get("big_o")
+                ana.complexity = comp
+                ana.algorithm_name = cached_norm.get("algorithm_name") if isinstance(cached_norm.get("algorithm_name"), str) else getattr(cached_norm, "algorithm_name", None)
+                ana.patterns = None
+                analysis_result = ana
+            else:
+                analysis_result = cached_norm
         
         assert analysis_result.complexity.big_o == "O(n^2)"
         

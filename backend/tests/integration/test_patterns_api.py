@@ -11,6 +11,16 @@ from app.main import app
 @pytest.fixture
 def client():
     """Cliente de prueba para FastAPI"""
+    # Asegurarse de limpiar caché antes de cada uso para evitar valores serializados
+    from app.services.cache_service import get_cache_service
+    import asyncio
+
+    try:
+        asyncio.run(get_cache_service().clear())
+    except Exception:
+        # Si no se puede limpiar (p. ej. loop ya corriendo), ignorar
+        pass
+
     return TestClient(app)
 
 @pytest.fixture

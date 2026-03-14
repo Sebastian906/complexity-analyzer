@@ -29,6 +29,7 @@ from app.services import (
     generate_cache_key,
     get_cache_service,
 )
+from app.infrastructure.cache.cache_backend import InMemoryCacheBackend
 
 # Alias para compatibilidad con nombres anteriores en tests
 AlgorithmCreateRequest = AlgorithmCreate
@@ -97,12 +98,12 @@ def export_service(tmp_path):
     return ExportService(export_path=tmp_path)
 
 @pytest.fixture
-def cache_service():
-    """CacheService limpio para cada test"""
-    service = CacheService()
+async def cache_service():
+    """CacheService limpio para cada test usando InMemory backend"""
+    service = CacheService(backend=InMemoryCacheBackend())
     yield service
-    # Cleanup
-    service._cache.clear()
+    # Cleanup usando API pública
+    await service.clear()
 
 # Tests - AlgorithmService
 class TestAlgorithmService:
