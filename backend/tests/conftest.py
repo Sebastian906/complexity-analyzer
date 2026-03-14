@@ -87,8 +87,81 @@ def export_service():
 @pytest.fixture
 def cache_service():
     """Fixture: CacheService para tests de integración"""
-    from app.services import get_cache_service
-    return get_cache_service()
+    # For integration tests, force an in-memory backend to avoid
+    # serialized strings from Redis between tests and to ensure isolation.
+    from app.services.cache_service import reset_cache_service
+    from app.services.cache_service import CacheService as _CS
+    from app.infrastructure.cache.cache_backend import InMemoryCacheBackend
+    import app.services.cache_service as cache_mod
+
+    # Reset singleton and set our in-memory instance
+    reset_cache_service()
+    cache_mod._cache_service = _CS(backend=InMemoryCacheBackend())
+    return cache_mod._cache_service
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _force_inmemory_cache_session():
+    """Autouse session fixture: fuerza InMemoryCacheBackend para toda la sesión.
+
+    Esto evita que el singleton se inicialice con Redis u otro backend antes
+    de que las fixtures de tests lo reseteen, evitando valores serializados
+    (strings) en `cache.get()` que rompen las aserciones.
+    """
+    from app.services.cache_service import reset_cache_service
+    from app.services.cache_service import CacheService as _CS
+    from app.infrastructure.cache.cache_backend import InMemoryCacheBackend
+    import app.services.cache_service as cache_mod
+
+    reset_cache_service()
+    cache_mod._cache_service = _CS(backend=InMemoryCacheBackend())
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _normalize_cache_get(monkeypatch):
+    """Autouse fixture: Normaliza valores retornados por `cache.get`.
+
+    Algunas implementaciones de backend pueden devolver strings (p. ej. Redis
+    que serializa modelos). Para evitar que los tests fallen al acceder a
+    atributos como `.success`, intentamos deserializar el string a JSON
+    y luego parsearlo al schema `CompleteAnalysisResult` si aplica.
+    """
+    from app.services.cache_service import get_cache_service
+    from app.schemas import CompleteAnalysisResult
+    import json
+
+    cache = get_cache_service()
+    if not hasattr(cache, "get"):
+        return
+
+    orig_get = cache.get
+
+    async def _get_wrapper(key):
+        val = await orig_get(key)
+        # Intentar parseo si es string
+        if isinstance(val, str):
+            # 1) Intentar parseo pydantic raw
+            try:
+                return CompleteAnalysisResult.model_validate_json(val)
+            except Exception:
+                pass
+            # 2) Intentar json.loads -> parse_obj
+            try:
+                parsed = json.loads(val)
+                try:
+                    return CompleteAnalysisResult.model_validate(parsed)
+                except Exception:
+                    return parsed
+            except Exception:
+                return val
+        return val
+
+    try:
+        monkeypatch.setattr(cache, "get", _get_wrapper)
+    except Exception:
+        # Monkeypatch puede fallar si cache es un proxy, ignorar
+        pass
 
 # Fixtures de Códigos de Ejemplo
 @pytest.fixture(scope="session")

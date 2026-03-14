@@ -8,17 +8,16 @@ Preparado para integrar Redis en el futuro (Módulo 6).
 import asyncio
 import hashlib
 import json
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
+from app.infrastructure.cache.cache_backend import CacheBackend, create_cache_backend
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Enums
+# Enums y helpers
 class CacheKey(str, Enum):
     """Tipos de claves de caché"""
     ANALYSIS = "analysis"
@@ -48,28 +47,8 @@ def generate_cache_key(prefix: CacheKey, code: str, **kwargs) -> str:
     params_hash = hashlib.md5(params_str.encode('utf-8')).hexdigest()[:8]
 
     # Si prefix es Enum, usar .value, si es str, usar directamente
-    if hasattr(prefix, 'value'):
-        prefix_val = prefix.value
-    else:
-        prefix_val = str(prefix)
+    prefix_val = prefix.value if hasattr(prefix, "value") else str(prefix)
     return f"{prefix_val}:{code_hash}:{params_hash}"
-
-@dataclass
-class CacheEntry:
-    """Entrada de caché"""
-    key: str
-    value: Any
-    created_at: datetime
-    expires_at: datetime
-    hits: int = 0
-
-    def is_expired(self) -> bool:
-        """Verifica si está expirada"""
-        return datetime.utcnow() > self.expires_at
-
-    def increment_hits(self):
-        """Incrementa contador de hits"""
-        self.hits += 1
 
 # Service
 class CacheService:
@@ -86,11 +65,11 @@ class CacheService:
         >>> cached = await cache.get(key)
     """
 
-    def __init__(self):
+    def __init__(self, backend: Optional[CacheBackend] = None) -> None:
         """Inicializa el servicio de caché"""
         # Caché en memoria (dict)
         # En producción: usar Redis
-        self._cache: Dict[str, CacheEntry] = {}
+        self._backend = backend or create_cache_backend()
 
         # TTL por defecto
         self.default_ttl = {
@@ -101,8 +80,9 @@ class CacheService:
             CacheKey.PARSING: settings.CACHE_TTL_ANALYSIS,
         }
 
-        logger.info("CacheService inicializado (in-memory)")
+        logger.info(f"CacheService iniciado — backend: {self._backend.backend_name()}")
 
+    # Operaciones básicas
     async def get(self, key: str) -> Optional[Any]:
         """
         Obtiene valor del caché.
@@ -113,27 +93,19 @@ class CacheService:
         Returns:
             Valor almacenado o None si no existe/expiró
         """
-        entry = self._cache.get(key)
-
-        if not entry:
-            logger.debug(f"Cache MISS: {key}")
-            return None
-
-        if entry.is_expired():
-            logger.debug(f"Cache EXPIRED: {key}")
-            await self.delete(key)
-            return None
-
-        logger.debug(f"Cache HIT: {key}")
-        entry.increment_hits()
-        return entry.value
+        value = await self._backend.get(key)
+        if value is None:
+            logger.debug(f"Cache MISS: {key[:40]}")
+        else:
+            logger.debug(f"Cache HIT:  {key[:40]}")
+        return value
 
     async def set(
         self,
         key: str,
         value: Any,
         ttl: Optional[int] = None,
-        cache_type: Optional[str] = None
+        cache_type: Optional[str] = None,
     ) -> bool:
         """
         Almacena valor en caché.
@@ -148,24 +120,21 @@ class CacheService:
             bool: True si se almacenó correctamente
         """
         # Determinar TTL
-        if ttl is None:
+        resolved_ttl = ttl
+        if resolved_ttl is None:
             if cache_type:
-                ttl = self.default_ttl.get(cache_type, 3600)
+                # cache_type puede llegar como string o CacheKey enum
+                try:
+                    ck = CacheKey(cache_type) if isinstance(cache_type, str) else cache_type
+                    resolved_ttl = self.default_ttl.get(ck, 3600)
+                except ValueError:
+                    resolved_ttl = 3600
             else:
-                ttl = 3600
+                resolved_ttl = 3600
 
-        # Crear entrada
-        entry = CacheEntry(
-            key=key,
-            value=value,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(seconds=ttl)
-        )
-
-        self._cache[key] = entry
-        logger.debug(f"Cache SET: {key} (TTL: {ttl}s)")
-
-        return True
+        result = await self._backend.set(key, value, ttl=resolved_ttl)
+        logger.debug(f"Cache SET: {key[:40]} (TTL={resolved_ttl}s)")
+        return result
 
     async def delete(self, key: str) -> bool:
         """
@@ -177,11 +146,10 @@ class CacheService:
         Returns:
             bool: True si existía y se eliminó
         """
-        if key in self._cache:
-            del self._cache[key]
-            logger.debug(f"Cache DELETE: {key}")
-            return True
-        return False
+        result = await self._backend.delete(key)
+        if result:
+            logger.debug(f"Cache DELETE: {key[:40]}")
+        return result
 
     async def clear(self, prefix: Optional[str] = None) -> int:
         """
@@ -193,62 +161,15 @@ class CacheService:
         Returns:
             int: Número de claves eliminadas
         """
-        if prefix:
-            keys_to_delete = [k for k in self._cache.keys() if k.startswith(prefix)]
-            for key in keys_to_delete:
-                del self._cache[key]
-            count = len(keys_to_delete)
-        else:
-            count = len(self._cache)
-            self._cache.clear()
-
-        logger.info(f"Cache cleared: {count} entries")
+        count = await self._backend.clear(prefix)
+        logger.info(f"Cache CLEAR: {count} entradas eliminadas (prefix={prefix!r})")
         return count
-
-    async def cleanup_expired(self) -> int:
-        """
-        Limpia entradas expiradas.
-
-        Returns:
-            int: Número de entradas eliminadas
-        """
-        expired_keys = [
-            k for k, v in self._cache.items()
-            if v.is_expired()
-        ]
-
-        for key in expired_keys:
-            del self._cache[key]
-
-        if expired_keys:
-            logger.info(f"Cleaned {len(expired_keys)} expired entries")
-
-        return len(expired_keys)
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas del caché.
-
-        Returns:
-            Dict: Estadísticas
-        """
-        total = len(self._cache)
-        expired = sum(1 for v in self._cache.values() if v.is_expired())
-        total_hits = sum(v.hits for v in self._cache.values())
-
-        return {
-            "total_entries": total,
-            "expired_entries": expired,
-            "active_entries": total - expired,
-            "total_hits": total_hits,
-            "avg_hits": total_hits / total if total > 0 else 0,
-        }
 
     async def exists(self, key: str) -> bool:
         """Verifica si una clave existe y no está expirada"""
-        value = await self.get(key)
-        return value is not None
+        return await self._backend.exists(key)
 
+    # Operaciones en lote
     async def get_many(self, keys: List[str]) -> Dict[str, Any]:
         """
         Obtiene múltiples valores del caché en paralelo.
@@ -259,29 +180,19 @@ class CacheService:
         Returns:
             Dict con {key: value} solo para claves existentes
         """
-        results = {}
 
         # Ejecutar gets en paralelo
-        async def get_single(key):
-            value = await self.get(key)
-            return key, value
+        async def _get(k: str):
+            return k, await self.get(k)
 
-        tasks = [get_single(key) for key in keys]
-        key_value_pairs = await asyncio.gather(*tasks)
-
-        # Filtrar None
-        for key, value in key_value_pairs:
-            if value is not None:
-                results[key] = value
-
-        logger.debug(f"Cache GET_MANY: {len(results)}/{len(keys)} hits")
-        return results
+        pairs = await asyncio.gather(*[_get(k) for k in keys])
+        return {k: v for k, v in pairs if v is not None}
 
     async def set_many(
         self,
         items: Dict[str, Any],
         ttl: Optional[int] = None,
-        cache_type: Optional[str] = None
+        cache_type: Optional[str] = None,
     ) -> int:
         """
         Almacena múltiples valores en caché en paralelo.
@@ -294,16 +205,10 @@ class CacheService:
         Returns:
             int: Número de items almacenados exitosamente
         """
-        async def set_single(key, value):
-            return await self.set(key, value, ttl=ttl, cache_type=cache_type)
-
-        tasks = [set_single(k, v) for k, v in items.items()]
-        results = await asyncio.gather(*tasks)
-
-        success_count = sum(1 for r in results if r)
-        logger.debug(f"Cache SET_MANY: {success_count}/{len(items)} successful")
-
-        return success_count
+        results = await asyncio.gather(
+            *[self.set(k, v, ttl=ttl, cache_type=cache_type) for k, v in items.items()]
+        )
+        return sum(1 for r in results if r)
 
     async def delete_many(self, keys: List[str]) -> int:
         """
@@ -315,17 +220,40 @@ class CacheService:
         Returns:
             int: Número de claves eliminadas
         """
-        async def delete_single(key):
-            return await self.delete(key)
+        results = await asyncio.gather(*[self.delete(k) for k in keys])
+        return sum(1 for r in results if r)
 
-        tasks = [delete_single(key) for key in keys]
-        results = await asyncio.gather(*tasks)
+    # Estadísticas
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Obtiene estadísticas del caché.
 
-        deleted_count = sum(1 for r in results if r)
-        logger.debug(f"Cache DELETE_MANY: {deleted_count}/{len(keys)} deleted")
+        Returns:
+            Dict: Estadísticas
+        """
+        base = {"backend": self._backend.backend_name()}
 
-        return deleted_count
+        # InMemory tiene stats detalladas
+        if hasattr(self._backend, "stats"):
+            base.update(self._backend.stats())
 
+        return base
+    
+    async def cleanup_expired(self) -> int:
+        """
+        Limpia entradas expiradas.
+
+        Returns:
+            int: Número de entradas eliminadas
+        """
+        if hasattr(self._backend, "cleanup_expired"):
+            return await self._backend.cleanup_expired()
+        return 0
+    
+    @property
+    def backend_name(self) -> str:
+        """Nombre del backend activo."""
+        return self._backend.backend_name()
 
 # Singleton
 _cache_service: Optional[CacheService] = None
@@ -341,3 +269,22 @@ def get_cache_service() -> CacheService:
     if _cache_service is None:
         _cache_service = CacheService()
     return _cache_service
+
+def reset_cache_service() -> None:
+    """
+    Resetea el singleton. Solo para tests.
+
+    Permite usar un backend diferente por test sin afectar otros.
+
+    Example (en conftest.py):
+        >>> from app.services.cache_service import reset_cache_service
+        >>> from app.infrastructure.cache.cache_backend import InMemoryCacheBackend
+        >>>
+        >>> @pytest.fixture(autouse=True)
+        >>> def fresh_cache():
+        ...     reset_cache_service()
+        ...     yield
+        ...     reset_cache_service()
+    """
+    global _cache_service
+    _cache_service = None
