@@ -35,6 +35,8 @@ from app.profiling import (
     get_performance_monitor,
 )
 from app.api.middleware import SecurityHeadersMiddleware, RateLimitMiddleware
+from app.parallel.worker_pools import shutdown_all_pools, get_pool_stats
+from app.infrastructure.telemetry import setup_telemetry, shutdown_telemetry
 from app.utils.logger import setup_logger
 
 # Configurar logger
@@ -121,11 +123,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             logger.info("IDS deshabilitado (IDS_ENABLED=false en configuración)")
         
         # Verificar APIs de LLMs (sin revelar presencia de claves en logs)
-        if settings.ANTHROPIC_API_KEY:
-            logger.debug("LLM primario disponible")
         if settings.GOOGLE_API_KEY:
+            logger.debug("LLM primario disponible")
+        if settings.ANTHROPIC_API_KEY:
             logger.debug("LLM secundario disponible")
         
+        otel_ok = setup_telemetry(app)
+        if otel_ok:
+            logger.info("OpenTelemetry activo")
+        else:
+            logger.info("OpenTelemetry no activo (OTEL_ENABLED=false o SDK no instalado)")
+
+        # ── Celery (verificar disponibilidad) ──────────────────────────────
+        from app.infrastructure.tasks import is_celery_available
+        if is_celery_available():
+            logger.info(
+                "Celery disponible. Análisis async en /api/v1/analysis/async"
+            )
+        else:
+            logger.info(
+                "Celery no configurado. Solo análisis síncronos disponibles. "
+                "Para activar: CELERY_ENABLED=true + celery -A "
+                "app.infrastructure.tasks.celery_app worker"
+            )
+
         logger.info("Aplicación iniciada correctamente")
         
     except Exception as e:
@@ -192,6 +213,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         from app.parallel.worker_pools import shutdown_all_pools
         shutdown_all_pools(wait=True)
         logger.info("Worker pools cerrados")
+
+        # Flush de OpenTelemetry
+        shutdown_telemetry()
+        logger.info("OpenTelemetry: spans exportados y cerrado")
 
         logger.info("Aplicación cerrada correctamente")
         

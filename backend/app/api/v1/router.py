@@ -16,6 +16,7 @@ from app.api.v1.endpoints import validation
 from app.api.v1.endpoints import services
 from app.api.v1.endpoints import export
 from app.api.v1.endpoints import security
+from app.api.v1.endpoints import analysis_async
 # Router principal
 api_router = APIRouter()
 
@@ -78,4 +79,12 @@ api_router.include_router(
     security.router,
     prefix="/security",
     tags=["Security"]
+)
+
+
+from app.api.v1.endpoints.analysis_async import async_router
+api_router.include_router(
+    async_router,
+    prefix="/analysis",
+    tags=["Analysis"]
 )

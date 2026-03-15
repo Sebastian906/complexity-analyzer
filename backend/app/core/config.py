@@ -70,10 +70,29 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     GEMINI_MAX_TOKENS: int = 4000
     GEMINI_TEMPERATURE: float = 0.0
+
+    # Ollama (LLM local gratuito)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "deepseek-coder:6.7b"
+    OLLAMA_MAX_TOKENS: int = 4000
+    OLLAMA_TEMPERATURE: float = 0.0
+    OLLAMA_TIMEOUT: float = 60.0
+
+    # OpenTelemetry
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "complexity-analyzer"
+    OTEL_EXPORTER: Literal["console", "jaeger", "otlp"] = "console"
+    OTEL_EXPORTER_ENDPOINT: str = ""
+
+    # Celery
+    CELERY_ENABLED: bool = False
+    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    CELERY_TASK_TIMEOUT: int = 300
     
     # Configuración LLM
-    PRIMARY_LLM: Literal["claude", "gemini"] = "gemini"
-    FALLBACK_LLM: Literal["claude", "gemini"] = "claude"
+    PRIMARY_LLM: Literal["claude", "gemini", "ollama"] = "ollama"
+    FALLBACK_LLM: Literal["claude", "gemini", "ollama"] = "gemini"
     LLM_TIMEOUT: int = 30
     LLM_MAX_RETRIES: int = 3
     LLM_RETRY_DELAY: int = 2
