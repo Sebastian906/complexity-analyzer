@@ -111,6 +111,13 @@ filterwarnings = [
     'ignore:.*datetime.datetime.utcnow\(\) is deprecated:DeprecationWarning',
     'ignore:.*_UnionGenericAlias.*:DeprecationWarning',
     'ignore:.*declarative_base\(\).*:DeprecationWarning',
+    'ignore:.*HTTP_422_UNPROCESSABLE_ENTITY.*:DeprecationWarning',
+    "ignore:Use 'content=<...>' to upload raw bytes/text content.:DeprecationWarning",
+    'ignore:.*Call to deprecated close.*:DeprecationWarning',
+    'ignore::pytest.PytestReturnNotNoneWarning',
+    # Pydantic/Libraries
+    "ignore:.*Accessing the 'model_fields' attribute on the instance is deprecated.*:DeprecationWarning",
+    'ignore:.*lazy_model.*:DeprecationWarning',
 ]
 
 minversion = "7.0"
