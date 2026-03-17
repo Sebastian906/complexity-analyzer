@@ -54,9 +54,9 @@ class TestSubmitAnalysis:
         # Mock para que is_celery_available retorne False
         with patch('app.infrastructure.tasks.is_celery_available', return_value=False):
             request_data = {
-                "code": "algorithm test(n) begin x <- 1 end",
-                "analyze_complexity": True,
-            }
+                    "code": "algorithm test(n) begin x := 1 end",
+                    "analyze_complexity": True,
+                }
             
             task_id = submit_analysis(request_data)
             
@@ -72,7 +72,7 @@ class TestSubmitAnalysis:
             pytest.skip("Celery worker no está corriendo")
         
         request_data = {
-            "code": "algorithm test(n) begin x <- 1 end",
+            "code": "algorithm test(n) begin x := 1 end",
             "analyze_complexity": True,
             "analyze_patterns": False,
             "analyze_structures": False,
@@ -137,8 +137,8 @@ class TestSubmitBatch:
         """Test que retorna None cuando Celery no está disponible"""
         with patch('app.infrastructure.tasks.is_celery_available', return_value=False):
             batch_data = [
-                {"code": "algorithm test1(n) begin x <- 1 end", "name": "test1"},
-                {"code": "algorithm test2(n) begin x <- 2 end", "name": "test2"},
+                {"code": "algorithm test1(n) begin x := 1 end", "name": "test1"},
+                {"code": "algorithm test2(n) begin x := 2 end", "name": "test2"},
             ]
             
             task_id = submit_batch(batch_data)
@@ -155,13 +155,13 @@ class TestSubmitBatch:
             pytest.skip("Celery worker no disponible")
         
         batch_data = [
-            {
-                "code": "algorithm test1(n) begin x <- 1 end",
+                {
+                "code": "algorithm test1(n) begin x := 1 end",
                 "name": "test1",
                 "options": {"analyze_complexity": True}
             },
             {
-                "code": "algorithm test2(n) begin for i <- 1 to n do x <- x + 1 end end",
+                "code": "algorithm test2(n) begin for i := 1 to n do x := x + 1 end end",
                 "name": "test2",
                 "options": {"analyze_complexity": True}
             },
@@ -209,7 +209,7 @@ class TestGetTaskStatus:
         
         # Enviar tarea simple
         request_data = {
-            "code": "algorithm simple(n) begin x <- 1 end",
+            "code": "algorithm simple(n) begin x := 1 end",
             "analyze_complexity": True,
             "analyze_patterns": False,
             "analyze_structures": False,
@@ -250,7 +250,7 @@ class TestCeleryEndpoints:
     @pytest.fixture
     def client(self):
         """Cliente de prueba para FastAPI"""
-        from fastapi.testclient import TestClient
+        from fastapi.testclient import TestClient # type: ignore
         from app.main import app
         return TestClient(app)
     
@@ -262,7 +262,7 @@ class TestCeleryEndpoints:
         response = client.post(
             "/api/v1/analysis/async",
             json={
-                "code": "algorithm test(n) begin x <- 1 end",
+                "code": "algorithm test(n) begin x := 1 end",
                 "analyze_complexity": True,
             }
         )
@@ -287,7 +287,7 @@ class TestCeleryEndpoints:
         submit_response = client.post(
             "/api/v1/analysis/async",
             json={
-                "code": "algorithm test(n) begin x <- 1 end",
+                "code": "algorithm test(n) begin x := 1 end",
                 "analyze_complexity": True,
             }
         )
@@ -316,11 +316,11 @@ class TestCeleryEndpoints:
             json={
                 "algorithms": [
                     {
-                        "code": "algorithm test1(n) begin x <- 1 end",
+                        "code": "algorithm test1(n) begin x := 1 end",
                         "name": "test1"
                     },
                     {
-                        "code": "algorithm test2(n) begin x <- 2 end",
+                        "code": "algorithm test2(n) begin x := 2 end",
                         "name": "test2"
                     },
                 ]
@@ -357,17 +357,16 @@ begin
     if n <= 1 then
         return 1
     end
-    
-    result <- 0
-    for i <- 1 to n do
+
+    result := 0
+    for i := 1 to n do
     begin
-        result <- result + complexRecursive(n - i)
+        result := result + complexRecursive(n - i)
     end
-    
+
     return result
 end
 """
-        
         request_data = {
             "code": complex_code,
             "analyze_complexity": True,
