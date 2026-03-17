@@ -5,6 +5,7 @@ Prueba la integración con Ollama (primario), Claude y Gemini (fallback/validaci
 """
 
 import pytest
+import warnings
 from unittest.mock import Mock, patch, AsyncMock
 
 from app.infrastructure.llm import (
@@ -15,6 +16,14 @@ from app.infrastructure.llm import (
     LLMResponse,
 )
 from app.core.config import settings
+
+# Suprimir warning de deprecación de aiohttp en Google GenAI SDK
+@pytest.fixture(autouse=True)
+def suppress_genai_warnings():
+    """Suprimir warnings de deprecación de Google GenAI SDK"""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module="google.genai")
+        yield
 
 @pytest.mark.integration
 @pytest.mark.llm

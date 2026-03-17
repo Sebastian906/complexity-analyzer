@@ -130,11 +130,11 @@ def _create_app() -> Optional[Any]:
 celery_app = _create_app()
 
 # Tareas registradas
-def _get_analyze_task():
-    """Retorna la tarea de análisis individual. None si Celery no está activo."""
-    if celery_app is None:
-        return None
+# Instancia global — None si Celery no está disponible o deshabilitado
+celery_app = _create_app()
 
+# funciones) para que Celery las detecte al arrancar el worker.
+if celery_app is not None:
     @celery_app.task(
         name="complexity_analyzer.analyze_algorithm",
         bind=True,
@@ -142,7 +142,7 @@ def _get_analyze_task():
         default_retry_delay=5,
         queue="complexity_analyzer",
     )
-    def analyze_algorithm(self, request_data: dict) -> dict:
+    def analyze_algorithm_task(self, request_data: dict) -> dict:
         """
         Analiza un algoritmo en background.
 
@@ -171,7 +171,18 @@ def _get_analyze_task():
                 result = loop.run_until_complete(
                     orchestrator.analyze_complete(request)
                 )
-                return result.model_dump()
+                # If the orchestrator returned a failure result, raise
+                # an exception so Celery marks the task as FAILURE
+                try:
+                    result_dict = result.model_dump()
+                except Exception:
+                    # If model_dump fails, raise to mark task as failed
+                    raise RuntimeError("Invalid analysis result")
+
+                if not result_dict.get("success", True):
+                    raise RuntimeError(result_dict.get("message") or result_dict.get("error") or "Analysis failed")
+
+                return result_dict
             finally:
                 loop.close()
 
@@ -182,18 +193,9 @@ def _get_analyze_task():
             try:
                 raise self.retry(exc=exc, countdown=5)
             except self.MaxRetriesExceededError:
-                return {
-                    "success": False,
-                    "error": str(exc),
-                    "task_id": self.request.id,
-                }
-
-    return analyze_algorithm
-
-def _get_batch_task():
-    """Retorna la tarea de análisis batch. None si Celery no está activo."""
-    if celery_app is None:
-        return None
+                # Do not convert final failure into a success payload —
+                # re-raise so Celery records FAILURE state and traceback.
+                raise exc
 
     @celery_app.task(
         name="complexity_analyzer.analyze_batch",
@@ -202,7 +204,7 @@ def _get_batch_task():
         default_retry_delay=10,
         queue="complexity_analyzer",
     )
-    def analyze_batch(self, batch_data: list) -> dict:
+    def analyze_batch_task(self, batch_data: list) -> dict:
         """
         Analiza múltiples algoritmos en background.
 
@@ -247,8 +249,10 @@ def _get_batch_task():
                 "task_id": self.request.id,
                 "total": len(batch_data),
             }
-
-    return analyze_batch
+else:
+    # Si Celery no está disponible, crear stubs que no hacen nada
+    analyze_algorithm_task = None
+    analyze_batch_task = None
 
 # API pública para los endpoints
 def submit_analysis(request_data: dict) -> Optional[str]:
@@ -261,10 +265,10 @@ def submit_analysis(request_data: dict) -> Optional[str]:
     Returns:
         task_id (string) si se envió, None si Celery no está disponible.
     """
-    task_fn = _get_analyze_task()
-    if task_fn is None:
+    # Re-evaluate availability at call time (tests may monkeypatch settings)
+    if not is_celery_available() or analyze_algorithm_task is None:
         return None
-    task = task_fn.delay(request_data)
+    task = analyze_algorithm_task.delay(request_data)
     logger.info(f"Análisis enviado a Celery: task_id={task.id}")
     return task.id
 
@@ -278,10 +282,10 @@ def submit_batch(batch_data: list) -> Optional[str]:
     Returns:
         task_id (string) si se envió, None si Celery no está disponible.
     """
-    task_fn = _get_batch_task()
-    if task_fn is None:
+    # Re-evaluate availability at call time
+    if not is_celery_available() or analyze_batch_task is None:
         return None
-    task = task_fn.delay(batch_data)
+    task = analyze_batch_task.delay(batch_data)
     logger.info(
         f"Batch enviado a Celery: {len(batch_data)} jobs, task_id={task.id}"
     )
@@ -301,7 +305,8 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
             result:  resultado si status == SUCCESS
             error:   mensaje de error si status == FAILURE
     """
-    if not CELERY_AVAILABLE or celery_app is None:
+    # Check availability at call time (allows monkeypatching settings in tests)
+    if not is_celery_available() or celery_app is None:
         return {
             "task_id": task_id,
             "status": "unavailable",
@@ -325,4 +330,11 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
 
 def is_celery_available() -> bool:
     """True si Celery está instalado, habilitado y el broker está configurado."""
-    return CELERY_AVAILABLE and celery_app is not None
+    # Evaluate settings at runtime so tests can monkeypatch settings.CELERY_ENABLED
+    try:
+        from app.core.config import settings
+        enabled = getattr(settings, "CELERY_ENABLED", False)
+    except Exception:
+        enabled = False
+
+    return CELERY_AVAILABLE and enabled and celery_app is not None
