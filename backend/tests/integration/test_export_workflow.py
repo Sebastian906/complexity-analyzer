@@ -164,7 +164,7 @@ class TestExportWorkflow:
             assert Path(result.output_path).exists()
             assert Path(result.output_path).stat().st_size > 0
         else:
-            files = result.metadata.get("files_generated", [])
+            files = result.metadata.get("files_generated", []) if isinstance(result.metadata, dict) else getattr(result.metadata, "files_generated", [])
             assert files
             for p in files:
                 assert Path(p).exists()

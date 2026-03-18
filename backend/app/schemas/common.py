@@ -157,6 +157,8 @@ class AnalysisMetadata(BaseModel):
     """Metadata completa de análisis"""
     timing: TimingMetadata = Field(..., description="Información de timing")
     resources: Optional[ResourceMetadata] = Field(None, description="Recursos utilizados")
+    # Errores no críticos acumulados durante el pipeline (si los hay)
+    errors: List[str] = Field(default_factory=list, description="Errores o advertencias acumuladas")
     version: str = Field("1.0.0", description="Versión del analizador")
     environment: Optional[str] = Field(None, description="Entorno de ejecución")
 

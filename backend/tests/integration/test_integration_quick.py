@@ -161,8 +161,14 @@ def test_full_engine():
         print(f"✓ Theta: {result.theta if result.theta else 'No existe'}")
         
         if result.metadata:
-            print(f"✓ Clase: {result.metadata.get('complexity_class', 'N/A')}")
-            warnings = result.metadata.get('warnings', [])
+            if isinstance(result.metadata, dict):
+                complexity_class = result.metadata.get('complexity_class', 'N/A')
+                warnings = result.metadata.get('warnings', [])
+            else:
+                complexity_class = getattr(result.metadata, 'complexity_class', 'N/A')
+                warnings = getattr(result.metadata, 'warnings', [])
+
+            print(f"✓ Clase: {complexity_class}")
             if warnings:
                 print(f"  Advertencias: {len(warnings)}")
         

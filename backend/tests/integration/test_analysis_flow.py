@@ -251,7 +251,7 @@ class TestExportFlowIntegration:
             # Algunos exportadores (CSV) generan múltiples archivos y retornan
             # output_path=None pero incluyen 'files_generated' en metadata.
             if result.output_path is None:
-                files = result.metadata.get("files_generated") if isinstance(result.metadata, dict) else None
+                files = result.metadata.get("files_generated") if isinstance(result.metadata, dict) else getattr(result.metadata, "files_generated", None)
                 assert files and isinstance(files, list) and len(files) > 0
             else:
                 assert result.output_path is not None
