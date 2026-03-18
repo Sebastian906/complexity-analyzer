@@ -281,7 +281,7 @@ class TestAnalysisOrchestratorIntegration:
                 f"Análisis falló:\n"
                 f"  Message: {result.message}\n"
                 f"  Summary: {result.summary}\n"
-                f"  Errors: {result.metadata.get('errors', [])}"
+                f"  Errors: {result.metadata.get('errors', []) if isinstance(result.metadata, dict) else getattr(result.metadata, 'errors', [])}"
             )
 
         # Ahora verificar campos
