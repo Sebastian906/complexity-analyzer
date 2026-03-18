@@ -7,8 +7,8 @@ Actualmente incluye:
 - `PatternMapper`: convertir resultados de detección de patrones a schemas Pydantic
 """
 
-from .pattern_mapper import PatternMapper
+from app.services.mappers.pattern_mapper import PatternMapper
 
 __all__ = [
-	"PatternMapper",
+    "PatternMapper",
 ]
