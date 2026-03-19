@@ -61,6 +61,10 @@ from app.services.summarizer import (
     Summarizer,
 )
 
+from app.services.dynamic_config import (
+    DynamicConfig
+)
+
 __all__ = [
     # Algorithm Service
     "AlgorithmService",
@@ -102,4 +106,7 @@ __all__ = [
     
     # Summarizer
     "Summarizer",
+
+    # Dynamic Config
+    "DynamicConfig"
 ]
