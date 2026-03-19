@@ -1,0 +1,41 @@
+# Flags de configuración dinámica — editables sin redeploy.
+
+# Cambios en este archivo se aplican automáticamente en ~60s.
+# Para aplicar inmediatamente: DynamicConfig.reload()
+
+# Alternativa: almacenar en Redis como JSON bajo la clave "runtime_flags"
+#   redis-cli SET runtime_flags '{"llm_validation_enabled": true}'
+
+# LLM 
+primary_llm: "ollama"
+fallback_llm: "gemini"
+
+# Activar validación cruzada con LLM después del análisis estático.
+# Requiere que LLMValidationStep esté registrado en el pipeline.
+llm_validation_enabled: false
+
+# Score mínimo para aceptar respuesta del LLM primario (0.0-1.0).
+# Si cae por debajo, el router intenta el fallback.
+llm_min_acceptable_score: 0.6
+
+# Timeout por llamada al LLM (segundos).
+llm_timeout_seconds: 30.0
+
+# Pipeline 
+pipeline_steps_enabled:
+  parse:          true
+  complexity:     true
+  patterns:       true
+  structures:     true
+  llm_validation: false   # Requiere llm_validation_enabled: true también
+  summarize:      true
+  visualizations: false   # Costoso — activar solo cuando sea necesario
+
+# Cache
+cache_enabled: true
+cache_ttl_analysis: 3600    # 1 hora
+cache_ttl_patterns: 7200    # 2 horas
+
+# Análisis 
+multiagent_enabled: false
+min_confidence: 0.3

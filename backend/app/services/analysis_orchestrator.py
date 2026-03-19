@@ -31,6 +31,7 @@ from app.services.pipeline.steps import (
     SummarizeStep,
 )
 from app.utils.logger import setup_logger
+from app.services.dynamic_config import DynamicConfig
 
 if TYPE_CHECKING:
     pass
@@ -153,6 +154,11 @@ class AnalysisOrchestrator:
         # if request.generate_visualizations:
         #     from app.services.pipeline.steps.visualization_step import VisualizationStep
         #     pipeline.register_step(VisualizationStep(request), position=-1)
+
+        if DynamicConfig.get("llm_validation_enabled", False):
+            from app.services.pipeline.steps.llm_validation_step import LLMValidationStep
+            from app.infrastructure.llm.llm_factory import LLMFactory
+            pipeline.register_step(LLMValidationStep(LLMFactory.create_router()), position=4)
 
         ctx = PipelineContext(request=request)
         ctx = await pipeline.run(ctx)
