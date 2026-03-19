@@ -1,5 +1,8 @@
+"""
+Modelo MongoDB para Resultados de Análisis.
+"""
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from beanie import Document, Link
 from pydantic import Field
 
@@ -27,6 +30,28 @@ class AnalysisResult(Document):
     # Metadata
     analysis_time: float = Field(..., description="Tiempo de análisis en segundos")
     analyzer_version: str = Field(default="1.0.0")
+
+    # Versionado del sistema 
+    system_version: str = Field(
+        default="1.0.0",
+        description="Versión semver del sistema que generó este análisis"
+    )
+    pipeline_version: str = Field(
+        default="2.0",
+        description="Versión del pipeline (2.0 = pipeline formal con pasos)"
+    )
+    analysis_schema_version: str = Field(
+        default="1.0",
+        description="Versión del schema de resultado — bump si cambia la estructura"
+    )
+    llm_used: Optional[str] = Field(
+        default=None,
+        description="LLM que participó en el análisis (None = solo análisis estático)"
+    )
+    config_snapshot: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Feature flags y configuración activa al momento del análisis"
+    )
 
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
