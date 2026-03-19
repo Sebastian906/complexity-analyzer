@@ -51,6 +51,16 @@ from app.services.cache_service import (
     generate_cache_key,
 )
 
+from app.services.evaluation_service import (
+    EvaluationService,
+    BenchmarkReport,
+    CaseResult,
+)
+
+from app.services.summarizer import (
+    Summarizer,
+)
+
 __all__ = [
     # Algorithm Service
     "AlgorithmService",
@@ -84,4 +94,12 @@ __all__ = [
     "CacheKey",
     "get_cache_service",
     "generate_cache_key",
+    
+    # Evaluation Service
+    "EvaluationService",
+    "BenchmarkReport",
+    "CaseResult",
+    
+    # Summarizer
+    "Summarizer",
 ]
