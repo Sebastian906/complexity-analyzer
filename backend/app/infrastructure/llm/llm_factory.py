@@ -11,6 +11,7 @@ from app.infrastructure.llm.base_llm import BaseLLM
 from app.infrastructure.llm.claude_adapter import ClaudeAdapter
 from app.infrastructure.llm.gemini_adapter import GeminiAdapter
 from app.infrastructure.llm.ollama_adapter import OllamaAdapter
+from app.infrastructure.llm.llm_router import LLMRouter
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,20 +25,20 @@ class LLMFactory:
     def create(llm_type: Optional[LLMType] = None) -> BaseLLM:
         """
         Crea instancia de LLM.
- 
+
         Args:
             llm_type: "claude", "gemini" u "ollama".
                      Si es None, usa PRIMARY_LLM de settings.
- 
+
         Returns:
             BaseLLM: Instancia del LLM correspondiente
- 
+
         Raises:
             ValueError: Si llm_type no es un tipo soportado
         """
         if llm_type is None:
             llm_type = settings.PRIMARY_LLM
- 
+
         if llm_type == "claude":
             if not settings.ANTHROPIC_API_KEY:
                 raise ValueError(
@@ -45,7 +46,7 @@ class LLMFactory:
                     "Añadir a .env para usar Claude."
                 )
             return ClaudeAdapter()
- 
+
         elif llm_type == "gemini":
             if not settings.GOOGLE_API_KEY:
                 raise ValueError(
@@ -63,7 +64,7 @@ class LLMFactory:
                 f"LLM type no soportado: '{llm_type}'. "
                 f"Valores válidos: 'claude', 'gemini', 'ollama'"
             )
- 
+
     @staticmethod
     def create_primary() -> BaseLLM:
         """Crea LLM primario según settings.PRIMARY_LLM."""
@@ -72,12 +73,12 @@ class LLMFactory:
         except Exception as e:
             logger.error(f"No se pudo crear LLM primario '{settings.PRIMARY_LLM}': {e}")
             raise
- 
+
     @staticmethod
     def create_fallback() -> Optional[BaseLLM]:
         """
         Crea LLM de fallback según settings.FALLBACK_LLM.
- 
+
         Retorna None si no está configurado, en lugar de lanzar excepción.
         """
         try:
@@ -87,18 +88,18 @@ class LLMFactory:
                 f"LLM fallback '{settings.FALLBACK_LLM}' no disponible: {e}"
             )
             return None
- 
+
     @staticmethod
     def create_validation_chain() -> List[BaseLLM]:
         """
         Crea la cadena completa de LLMs para validación cruzada.
- 
+
         El orden refleja el flujo: primario → fallback → adicionales.
         Solo incluye LLMs que están configurados.
- 
+
         Returns:
             Lista de LLMs en orden de prioridad
- 
+
         Example:
             >>> chain = LLMFactory.create_validation_chain()
             >>> # [OllamaAdapter, GeminiAdapter, ClaudeAdapter]
@@ -106,13 +107,13 @@ class LLMFactory:
             ...     result = await llm.generate_json(prompt)
         """
         chain = []
- 
+
         # Primario
         try:
             chain.append(LLMFactory.create_primary())
         except Exception as e:
             logger.warning(f"LLM primario no disponible: {e}")
- 
+
         # Fallback (solo si es diferente del primario)
         if settings.FALLBACK_LLM != settings.PRIMARY_LLM:
             try:
@@ -194,3 +195,59 @@ class LLMFactory:
         status["fallback"] = settings.FALLBACK_LLM
 
         return status
+    
+    @staticmethod
+    def create_router(
+        min_acceptable_score: float = 0.6,
+        timeout_seconds: float = 30.0,
+        max_retries: int = 3,
+    ) -> "LLMRouter":
+        """
+        Crea un LLMRouter con primario y fallback según settings.
+
+        El router encapsula circuit breaker, evaluación de calidad
+        y retry automático. Es el punto de entrada recomendado
+        para cualquier uso de LLMs que requiera resiliencia.
+
+        Args:
+            min_acceptable_score: Score mínimo para aceptar respuesta
+                                  del primario (0.0-1.0).
+            timeout_seconds:      Timeout por llamada individual.
+            max_retries:          Reintentos ante fallos de red.
+
+        Returns:
+            LLMRouter configurado con primario y fallback de settings.
+
+        Example:
+            >>> router = LLMFactory.create_router()
+            >>> routed = await router.route(
+            ...     prompt="...",
+            ...     required_fields=["big_o", "omega"],
+            ... )
+            >>> print(routed.llm_used)
+        """
+        from app.infrastructure.llm.llm_router import LLMRouter
+
+        primary = LLMFactory.create_primary()
+        fallback = LLMFactory.create_fallback()
+
+        return LLMRouter(
+            primary=primary,
+            fallback=fallback,
+            min_acceptable_score=min_acceptable_score,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+
+    @staticmethod
+    async def check_router_health() -> dict:
+        """
+        Verifica el estado de salud del router y sus circuit breakers.
+
+        Útil para el endpoint /health y para Prometheus.
+
+        Returns:
+            Dict con estado de cada LLM y sus circuit breakers.
+        """
+        router = LLMFactory.create_router()
+        return router.get_status()
