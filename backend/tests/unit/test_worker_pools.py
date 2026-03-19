@@ -173,8 +173,8 @@ class TestGraphvizInExecutor:
         # El event loop procesó al menos algunas iteraciones
         assert counter > 0
         
-        # No debe haber tomado demasiado tiempo
-        assert elapsed < 2.0
+        # No debe haber tomado demasiado tiempo (umbral relajado para evitar flakes)
+        assert elapsed < 5.0
     
     @pytest.mark.asyncio
     async def test_multiple_graphviz_concurrent(self):

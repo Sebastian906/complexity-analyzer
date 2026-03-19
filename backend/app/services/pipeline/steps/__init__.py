@@ -22,6 +22,7 @@ from app.services.pipeline.steps.complexity_step import ComplexityStep
 from app.services.pipeline.steps.pattern_step import PatternStep
 from app.services.pipeline.steps.structure_step import StructureStep
 from app.services.pipeline.steps.summarize_step import SummarizeStep
+from app.services.pipeline.steps.llm_validation_step import LLMValidationStep
 
 __all__ = [
     "ParseStep",
@@ -29,4 +30,5 @@ __all__ = [
     "PatternStep",
     "StructureStep",
     "SummarizeStep",
+    "LLMValidationStep",
 ]
