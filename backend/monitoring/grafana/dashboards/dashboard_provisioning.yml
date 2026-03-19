@@ -1,0 +1,12 @@
+# monitoring/grafana/dashboards/dashboard_provisioning.yml
+apiVersion: 1
+
+providers:
+  - name: "complexity-analyzer"
+    orgId: 1
+    folder: "Complexity Analyzer"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

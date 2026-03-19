@@ -137,6 +137,7 @@ python-decouple>=3.8
 # Monitoreo (Opcional)
 # ============================================================================
 prometheus-client>=0.21.0        # Métricas
+prometheus-fastapi-instrumentator>=6.0.0  # Prometheus FastAPI Instrumentator
 sentry-sdk[fastapi]>=2.19.0      # Error tracking
 
 # ============================================================================

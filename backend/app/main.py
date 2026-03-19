@@ -134,7 +134,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         else:
             logger.info("OpenTelemetry no activo (OTEL_ENABLED=false o SDK no instalado)")
 
-        # ── Celery (verificar disponibilidad) ──────────────────────────────
+        if settings.ENABLE_PROMETHEUS:
+            from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore
+            Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+            from app.metrics import setup_custom_metrics
+            setup_custom_metrics()
+
+        # Celery (verificar disponibilidad)
         from app.infrastructure.tasks import is_celery_available
         if is_celery_available():
             logger.info(
