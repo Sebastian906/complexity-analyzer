@@ -1,0 +1,257 @@
+{
+    "title": "Complexity Analyzer — System Dashboard",
+    "uid": "complexity-analyzer-main",
+    "schemaVersion": 38,
+    "refresh": "30s",
+    "panels": [
+        {
+            "id": 1,
+            "title": "Análisis por minuto",
+            "type": "stat",
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "rate(complexity_analyzer_analyses_total[1m]) * 60",
+                    "legendFormat": "análisis/min"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "title": "Latencia p95 del análisis",
+            "type": "stat",
+            "gridPos": {
+                "x": 4,
+                "y": 0,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, rate(complexity_analyzer_analysis_duration_seconds_bucket[5m]))",
+                    "legendFormat": "p95"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 2
+                            },
+                            {
+                                "color": "red",
+                                "value": 5
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": 3,
+            "title": "Tasa de errores",
+            "type": "stat",
+            "gridPos": {
+                "x": 8,
+                "y": 0,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "rate(complexity_analyzer_analyses_total{status='error'}[5m]) / rate(complexity_analyzer_analyses_total[5m])",
+                    "legendFormat": "error rate"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.05
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": 4,
+            "title": "Accuracy del sistema (regresión)",
+            "type": "stat",
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "complexity_analyzer_evaluation_accuracy",
+                    "legendFormat": "accuracy"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.7
+                            },
+                            {
+                                "color": "green",
+                                "value": 0.9
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": 5,
+            "title": "Circuit Breakers LLM",
+            "type": "stat",
+            "gridPos": {
+                "x": 16,
+                "y": 0,
+                "w": 4,
+                "h": 4
+            },
+            "targets": [
+                {
+                    "expr": "sum(complexity_analyzer_circuit_breaker_open)",
+                    "legendFormat": "breakers abiertos"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "thresholds": {
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": 10,
+            "title": "Duración por paso del pipeline",
+            "type": "timeseries",
+            "gridPos": {
+                "x": 0,
+                "y": 4,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, rate(complexity_analyzer_pipeline_step_seconds_bucket[5m]))",
+                    "legendFormat": "{{ step_name }} p95"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            }
+        },
+        {
+            "id": 11,
+            "title": "Score de respuestas LLM",
+            "type": "timeseries",
+            "gridPos": {
+                "x": 12,
+                "y": 4,
+                "w": 12,
+                "h": 8
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.50, rate(complexity_analyzer_llm_response_score_bucket[5m]))",
+                    "legendFormat": "{{ llm_name }} p50"
+                }
+            ]
+        },
+        {
+            "id": 20,
+            "title": "Cache hit rate",
+            "type": "timeseries",
+            "gridPos": {
+                "x": 0,
+                "y": 12,
+                "w": 12,
+                "h": 6
+            },
+            "targets": [
+                {
+                    "expr": "rate(complexity_analyzer_cache_hits_total[5m]) / (rate(complexity_analyzer_cache_hits_total[5m]) + rate(complexity_analyzer_cache_misses_total[5m]))",
+                    "legendFormat": "{{ cache_type }} hit rate"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit"
+                }
+            }
+        },
+        {
+            "id": 21,
+            "title": "LLM requests por modelo",
+            "type": "timeseries",
+            "gridPos": {
+                "x": 12,
+                "y": 12,
+                "w": 12,
+                "h": 6
+            },
+            "targets": [
+                {
+                    "expr": "rate(complexity_analyzer_llm_requests_total[5m])",
+                    "legendFormat": "{{ llm_name }} ({{ status }})"
+                }
+            ]
+        }
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    }
+}

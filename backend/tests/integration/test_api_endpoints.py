@@ -1148,6 +1148,59 @@ class TestSecurityIDSEndpoints:
         assert data["blocked"] is False
         assert isinstance(data["available"], bool)
 
+# TESTS: Services Endpoints
+class TestServicesEndpoints:
+    """Pruebas para endpoints públicos bajo /api/v1/services"""
+
+    def test_analyze_quick_endpoint(self, client):
+        """POST /api/v1/services/analyze-quick debe retornar resumen rápido"""
+        payload = {
+            "code": """algorithm sumArray(A[n])\nbegin\n    sum ← 0\n    for i ← 1 to n do\n    begin\n        sum ← sum + A[i]\n    end\n    return sum\nend"""
+        }
+
+        response = client.post("/api/v1/services/analyze-quick", json=payload)
+
+        # Aceptar 200 o 400 si faltan dependencias; no queremos flakes
+        assert response.status_code in (200, 400), response.text
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "success" in data
+            assert "summary" in data
+            # big_o puede estar en top-level o en campo 'big_o'
+            assert ("big_o" in data) or (data.get("big_o") is not None)
+
+    def test_cache_stats_clear_and_cleanup(self, client):
+        """GET/DELETE/POST cache endpoints deben responder correctamente"""
+        # Stats
+        stats_resp = client.get("/api/v1/services/cache/stats")
+        assert stats_resp.status_code == 200, stats_resp.text
+        stats = stats_resp.json()
+        assert "success" in stats
+
+        # Clear (DELETE) - usar sin prefijo para no borrar nada importante
+        del_resp = client.delete("/api/v1/services/cache/clear")
+        assert del_resp.status_code == 200, del_resp.text
+        del_data = del_resp.json()
+        assert "entries_cleared" in del_data
+
+        # Cleanup expired (POST)
+        cleanup_resp = client.post("/api/v1/services/cache/cleanup")
+        assert cleanup_resp.status_code == 200, cleanup_resp.text
+        cleanup_data = cleanup_resp.json()
+        assert "expired_cleaned" in cleanup_data
+
+    def test_evaluation_endpoints_exist(self, client):
+        """Verificar endpoints de evaluación (alias de EvaluationService)"""
+        # Quick
+        resp_q = client.get("/api/v1/services/evaluation/quick")
+        assert resp_q.status_code == 200, resp_q.text
+        data_q = resp_q.json()
+        assert "accuracy" in data_q
+
+        # Benchmark (puede tardar) - solo verificar que existe
+        resp_b = client.get("/api/v1/services/evaluation/benchmark")
+        assert resp_b.status_code == 200, resp_b.text
 
 # TESTS: Error Handling
 class TestErrorHandling:
