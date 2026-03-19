@@ -53,6 +53,7 @@ from app.services import (
     ExportService,
     CacheService,
     CacheKey,
+    EvaluationService,
     generate_cache_key,
     get_cache_service,
 )
@@ -665,14 +666,14 @@ async def get_cache_stats():
     """Obtiene estadísticas del caché"""
     cache = get_cache_service()
     stats = cache.get_statistics()
-
+    # Algunos backends (InMemory) no reportan `avg_hits`; usar fallback seguro
     return {
         "success": True,
-        "total_entries": stats["total_entries"],
-        "active_entries": stats["active_entries"],
-        "expired_entries": stats["expired_entries"],
-        "total_hits": stats["total_hits"],
-        "avg_hits": stats["avg_hits"]
+        "total_entries": stats.get("total_entries", 0),
+        "active_entries": stats.get("active_entries", 0),
+        "expired_entries": stats.get("expired_entries", 0),
+        "total_hits": stats.get("total_hits", 0),
+        "avg_hits": stats.get("avg_hits", 0),
     }
 
 @router.delete(
@@ -707,3 +708,82 @@ async def cleanup_cache():
         "success": True,
         "expired_cleaned": count
     }
+
+@router.get(
+    "/evaluation/quick",
+    summary="Evaluación rápida del sistema",
+    description=(
+        "Evalúa la precisión del sistema sobre 3 algoritmos canónicos. "
+        "Diseñado para health checks — completa en menos de 15s."
+    ),
+    tags=["Services"],
+)
+async def evaluation_quick():
+    """
+    Health check semántico: verifica que el sistema analiza correctamente
+    al menos los casos más básicos (bubbleSort, mergeSort, fibonacciDP).
+
+    Retorna accuracy y detalle de cada caso.
+    """
+    try:
+        from app.services.evaluation_service import EvaluationService
+
+        service = EvaluationService(llm_type="none")
+        report = await service.run_quick_check()
+
+        return {
+            "success":          True,
+            "accuracy":         report.accuracy,
+            "correct_cases":    report.correct_cases,
+            "total_cases":      report.total_cases,
+            "regression_passed": report.regression_passed,
+            "duration_seconds": report.duration_seconds,
+            "cases": [
+                {
+                    "algorithm": r.algorithm_name,
+                    "expected":  r.expected_big_o,
+                    "obtained":  r.obtained_big_o,
+                    "correct":   r.correct,
+                }
+                for r in report.case_results
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Error en evaluación rápida: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get(
+    "/evaluation/benchmark",
+    summary="Benchmark completo del sistema",
+    description=(
+        "Evalúa la precisión del sistema sobre todos los casos canónicos. "
+        "Más completo que /quick pero tarda más (~30s). "
+        "No usar en health checks frecuentes."
+    ),
+    tags=["Services"],
+)
+async def evaluation_benchmark():
+    """
+    Benchmark completo sobre todos los algoritmos canónicos.
+    Útil para comparar el sistema antes/después de un refactor.
+    """
+    try:
+
+        from app.services.evaluation_service import EvaluationService
+        service = EvaluationService(llm_type="none")
+        report = await service.run_benchmark()
+
+        return {
+            "success":              True,
+            "report":               report.to_dict(),
+            "summary":              report.summary_line(),
+        }
+    except Exception as e:
+        logger.error(f"Error en benchmark: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

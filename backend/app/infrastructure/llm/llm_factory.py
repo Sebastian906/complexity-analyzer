@@ -12,6 +12,7 @@ from app.infrastructure.llm.claude_adapter import ClaudeAdapter
 from app.infrastructure.llm.gemini_adapter import GeminiAdapter
 from app.infrastructure.llm.ollama_adapter import OllamaAdapter
 from app.infrastructure.llm.llm_router import LLMRouter
+from app.infrastructure.llm.llm_ensemble import LLMEnsemble
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -251,3 +252,9 @@ class LLMFactory:
         """
         router = LLMFactory.create_router()
         return router.get_status()
+
+    @staticmethod
+    def create_ensemble(strategy="best_score") -> "LLMEnsemble":
+        from app.infrastructure.llm.llm_ensemble import LLMEnsemble, EnsembleStrategy
+        llms = [llm for llm in LLMFactory.create_validation_chain() if llm]
+        return LLMEnsemble(llms=llms, strategy=EnsembleStrategy(strategy))
