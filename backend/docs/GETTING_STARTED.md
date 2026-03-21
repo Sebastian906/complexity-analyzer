@@ -149,6 +149,24 @@ INFO:     Started reloader process [12345] using StatReload
 INFO:     Started server process [12346]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+
+### Método 4: Docker Compose (recomendado para entornos locales completos)
+
+El repositorio incluye `docker-compose.yml` que levanta la API, MongoDB, Redis y un worker Celery. Para levantar todo el stack:
+
+```bash
+# Construir y levantar todos los servicios definidos en docker-compose
+docker-compose up --build
+
+# Para levantar en segundo plano
+docker-compose up -d --build
+```
+
+Notas importantes:
+- El servicio `celery-worker` se encarga de los análisis asíncronos; si no está activo, los endpoints `/analysis/async` y `/analysis/batch-async` devolverán 503.
+- Redis actúa como broker/result backend para Celery **y** como caché; asegúrate de tener Redis operativo si quieres usar caching y análisis asíncrono.
+- Variables LLM (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, etc.) se configuran en `.env`; cuando los LLMs fallan el sistema aplica degradación segura (fallback a modelos alternativos o marcar la validación como degradada).
+
 ```
 
 ---

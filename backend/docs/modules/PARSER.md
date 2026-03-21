@@ -69,6 +69,10 @@ parser/
 - [semantic_analyzer.py](../app/core/parser/semantic_analyzer.py) - Analisis semantico
 - [validator.py](../app/core/parser/validator.py) - Validacion estructural
 
+**Integración y agentes:**
+
+- Existe un `parser_agent.py` en `app/infrastructure/agents/` que puede ejecutar la fase de parsing como un paso de un pipeline multiagente (ver `app/infrastructure/agents/`). Esto permite reutilizar el parser tanto en flujos sincrónicos como en orquestaciones asistidas por agentes.
+
 ---
 
 ## Componentes

@@ -225,9 +225,9 @@ Devuelve una lista de algoritmos de ejemplo listos para probar.
 
 ## Endpoints: Análisis
 
-### POST /analysis/analyze
+### POST /analysis/analyze-complete
 
-Realiza el análisis completo de complejidad de un algoritmo.
+Realiza el análisis completo de complejidad de un algoritmo. (Ruta real en el código: `/api/v1/analysis/analyze-complete`)
 
 **Cuerpo de la solicitud:**
 
@@ -334,6 +334,16 @@ Resuelve una ecuación de recurrencia dada.
     "Resultado: Theta(n^1 * log n) = Theta(n log n)"
   ]
 }
+
+### Asíncrono (Celery)
+
+El proyecto expone endpoints para análisis asíncrono que delegan en workers Celery cuando está configurado (ver `docker-compose.yml`):
+
+- `POST /analysis/async` → Enviar análisis individual a Celery, retorna 202 + `task_id`.
+- `POST /analysis/batch-async` → Enviar batch de análisis (máx 100) a Celery, retorna 202 + `task_id`.
+- `GET /analysis/task/{task_id}` → Consultar estado/resultado de la tarea.
+
+Nota: Estos endpoints devuelven 503 si Celery o el broker (Redis) no están disponibles.
 ```
 
 ---

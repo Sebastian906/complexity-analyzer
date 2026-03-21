@@ -110,6 +110,17 @@ La complejidad resultante se simplifica descartando constantes y términos de me
 
 Se comparan el resultado de Big O y Omega. Si son funcionalmente equivalentes (misma clase de crecimiento), se calcula Theta. En caso contrario, se reporta que Theta no existe para ese algoritmo.
 
+## Implementación y notas de ejecución
+
+Notas sobre la implementación práctica del análisis:
+
+- El análisis operativo está implementado por `AnalyzerEngine` y orquestado por `AnalysisOrchestrator` (ver `app/services/analysis_orchestrator.py`). El orquestador ejecuta pipelines compuestos por pasos como parseo, detección de estructuras, análisis de complejidad, detección de patrones y (opcionalmente) validación por LLM.
+- Para cargas pesadas o validaciones LLM/visualizaciones, los pipelines pueden ejecutarse de forma asíncrona mediante workers Celery; los endpoints asíncronos están expuestos en `app/api/v1/endpoints/analysis_async.py` (envío y consulta de estado). Cuando no hay workers disponibles, el API devuelve 503 para las rutas que dependen de ejecución asíncrona.
+- La validación asistida por modelos de lenguaje está implementada bajo `app/infrastructure/llm/` (adaptadores, `LLMFactory`, `llm_circuit_breaker`, `llm_ensemble`, `ollama_adapter.py`). Esta validación es opcional: el pipeline principal no depende de ella para calcular Big O / Omega, pero puede enriquecer explicaciones y resúmenes.
+- El sistema usa caching (Redis) para evitar recomputar análisis iguales; la caché y la coordinación con Celery se encuentran en `app/infrastructure/cache/` y `app/infrastructure/tasks` respectivamente.
+
+Estas notas son de implementación y no cambian la teoría presentada arriba; sirven para entender cómo las decisiones prácticas (timeouts, caché, LLM fallbacks, ejecución asíncrona) afectan el comportamiento en entornos reales.
+
 ---
 
 ## Complejidad Temporal

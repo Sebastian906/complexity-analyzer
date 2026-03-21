@@ -29,6 +29,8 @@ La API de detección de patrones permite identificar automáticamente técnicas 
 - **Búsqueda**
 - Y más...
 
+> Nota: la detección puede opcionalmente usar validación asistida por LLMs cuando está habilitado en la configuración. En ese caso la validación puede formar parte del pipeline (síncrono o asíncrono) y estar delegada a agentes/LLMs.
+
 ---
 
 ## Endpoints Disponibles

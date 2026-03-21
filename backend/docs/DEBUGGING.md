@@ -1,3 +1,33 @@
+## Debugging de Tareas Asíncronas y LLMs
+
+### Celery / Workers
+
+Si usas endpoints asíncronos (`/analysis/async`, `/analysis/batch-async`) verifica que el worker esté corriendo y que Redis (broker/result backend) esté accesible.
+
+Comandos útiles:
+
+```bash
+# Levantar logs del worker (si usas Docker Compose)
+docker-compose logs -f celery-worker
+
+# Ver estado de tareas (Flower, si está disponible):
+http://localhost:5555
+
+# Consultar cola Redis
+redis-cli -h localhost -p 6379 ping
+```
+
+### Fallos en LLMs y degradación
+
+Cuando la validación con LLM está activa, el sistema utiliza `LLMFactory`, `llm_circuit_breaker` y `llm_router` para protegerse ante fallos y costes. Para depurar problemas con LLMs:
+
+- Revisar logs para entradas vinculadas a `llm_circuit_breaker` o `LLMFactory`.
+- Si observas timeouts o fallos repetidos, el circuito puede abrirse y las llamadas serán rechazadas hasta que se recupere el servicio.
+- Verifica las claves/variables de entorno (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) y los endpoints de los proveedores locales (por ejemplo Ollama si está configurado).
+
+### Recomendación
+
+Al agregar tests que dependen de LLMs, mockea las llamadas LLM (usar `responses` o `pytest-mock`) para evitar invocar servicios externos durante CI.
 # Guía de Debugging Profesional
 
 Esta guía establece el proceso sistemático para identificar y resolver bugs en el proyecto.

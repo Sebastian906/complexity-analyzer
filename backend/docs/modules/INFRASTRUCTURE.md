@@ -95,6 +95,7 @@ infrastructure/
         base_llm.py          # Interface base
         claude_adapter.py    # Adaptador Anthropic
         gemini_adapter.py    # Adaptador Google
+        ollama_adapter.py    # Adaptador Ollama
         llm_factory.py       # Factory de LLMs
         prompt_templates.py  # Plantillas de prompts
         response_parser.py   # Parser de respuestas
@@ -352,6 +353,11 @@ Integración con modelos de lenguaje para validación y análisis avanzado.
 |-----------|-----------|--------|
 | `ClaudeAdapter` | Anthropic | Claude 3/3.5 |
 | `GeminiAdapter` | Google | Gemini Pro |
+| `OllamaAdapter` | Ollama | Ollama |
+
+El paquete `llm` incluye utilidades para creación y manejo de modelos: además de los adaptadores, contiene `llm_factory.py`, `prompt_templates.py` y `response_parser.py`. La `LLMFactory` permite configurar un LLM primario y un LLM de respaldo (fallback) y devolver objetos `BaseLLM` listos para uso en agentes y servicios.
+
+Nota: la integración está preparada para ampliar su catálogo de adaptadores y añadir utilidades de orquestación (por ejemplo, circuit-breakers o ensembles) dentro de `app/infrastructure/llm/` si se incorporan en el repositorio.
 
 #### Interface Base
 
@@ -489,7 +495,7 @@ from app.infrastructure import (
     
     # LLM
     BaseLLM, LLMResponse, LLMFactory,
-    ClaudeAdapter, GeminiAdapter,
+    ClaudeAdapter, GeminiAdapter, OllamaAdapter,
 )
 ```
 
