@@ -13,6 +13,7 @@ Este proyecto implementa un analizador avanzado que, dado un algoritmo en pseudo
 - **Análisis Línea por Línea**: Conteo de ejecuciones por instrucción
 - **Visualización**: Árboles de recursión y grafos de ejecución
 - **Validación con IA**: Verificación cruzada usando Claude y Gemini
+- **Validación con IA**: Verificación cruzada usando Claude, Gemini y adaptadores locales (p. ej. Ollama)
 
 ## Arquitectura
 
@@ -43,6 +44,7 @@ El sistema sigue una **Arquitectura Hexagonal (Ports & Adapters)** con separaci�
 - **Claude** (Anthropic) - Análisis y validación
 - **Gemini** (Google) - Validación alternativa
 - **LangGraph** - Orquestación multiagente
+- **Ollama** (local/embebido) - Adaptador disponible en `app/infrastructure/llm/ollama_adapter.py` (uso opcional, útil en entornos offline)
 
 ### Bases de Datos
 - **MongoDB**: Almacenamiento principal (algoritmos y análisis)
@@ -99,6 +101,9 @@ docker-compose up -d
 # 3. Ver logs
 docker-compose logs -f api
 
+# Asegúrate de que los workers de Celery y Redis estén activos (si usas ejecución asíncrona)
+# docker-compose incluye `celery-worker` y `redis`; verifica con `docker-compose ps`.
+
 # La API estará disponible en: http://localhost:8000
 ```
 
@@ -109,12 +114,17 @@ docker-compose logs -f api
 # Health Check
 curl http://localhost:8000/api/v1/health
 
-# Analizar un algoritmo
-curl -X POST http://localhost:8000/api/v1/analysis/analyze \
+# Analizar un algoritmo (sin validaciones LLM pesadas)
+curl -X POST http://localhost:8000/api/v1/analysis/analyze-complete \
   -H "Content-Type: application/json" \
   -d '{
     "algorithm_code": "algorithm test(n)\nbegin\n  for i ← 1 to n do\n    x ← x + 1\nend"
   }'
+
+# Para análisis pesados o pipelines que incluyan validación LLM/visualización, usa el endpoint asíncrono:
+# Envío: `POST /api/v1/analysis/async` → devuelve `task_id`
+# Consulta de estado: `GET /api/v1/analysis/task/{task_id}`
+# Nota: si no hay workers Celery disponibles, los endpoints asíncronos responderán 503.
 ```
 
 ### Ejemplo con Python
@@ -125,7 +135,7 @@ import httpx
 client = httpx.Client(base_url="http://localhost:8000")
 
 # Analizar algoritmo
-response = client.post("/api/v1/analysis/analyze", json={
+response = client.post("/api/v1/analysis/analyze-complete", json={
     "algorithm_code": """
     quicksort(A[1..n])
     begin

@@ -21,7 +21,7 @@ Documentación completa del módulo de detección automática de patrones y téc
 
 ## Descripcion General
 
-El modulo de patrones identifica automaticamente las tecnicas algoritmicas utilizadas en un algoritmo mediante analisis estatico del AST.
+El modulo de patrones identifica automaticamente las tecnicas algoritmicas utilizadas en un algoritmo mediante analisis estatico del AST. Opcionalmente puede enriquecer o validar detecciones usando la capa de `llm` a traves de adaptadores (`app/infrastructure/llm/`) y estrategias de ensemble/validacion cuando el `PatternDetector` se ejecuta dentro de un pipeline orquestado.
 
 ### Funcionalidades Principales
 
@@ -58,15 +58,15 @@ patterns/
 │
 └── detectors/                      # Detectores especificos
     ├── __init__.py
-    ├── brute_force.py              # Fuerza Bruta
-    ├── recursive_detector.py       # Recursion
-    ├── divide_conquer_detector.py  # Divide y Venceras
-    ├── dynamic_programming_detector.py  # Programacion Dinamica
-    ├── greedy_detector.py          # Algoritmos Greedy
-    ├── backtracking_detector.py    # Backtracking
-    ├── branch_bound_detector.py    # Branch and Bound
-    ├── sorting_and_searching.py    # Ordenamiento y Busqueda
-    └── advanced_patterns.py        # Patrones Avanzados
+    ├── brute_force_detector.py              # Fuerza Bruta
+    ├── recursive_detector.py                # Recursion
+    ├── divide_conquer_detector.py           # Divide y Venceras
+    ├── dynamic_programming_detector.py      # Programacion Dinamica
+    ├── greedy_detector.py                   # Algoritmos Greedy
+    ├── backtracking_detector.py             # Backtracking
+    ├── branch_bound_detector.py             # Branch and Bound
+    ├── sorting_and_searching.py             # Ordenamiento y Busqueda
+    └── advanced_patterns.py                 # Patrones Avanzados
 ```
 
 **Archivos principales:**

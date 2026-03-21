@@ -31,7 +31,7 @@ El sistema es un backend de análisis de complejidad algorítmica construido com
 - Estructuras de datos involucradas
 - Visualizaciones gráficas de la estructura del algoritmo
 
-El sistema complementa el análisis estático con validación cruzada usando modelos de lenguaje (Claude de Anthropic y Gemini de Google).
+El sistema complementa el análisis estático con validación cruzada usando modelos de lenguaje (Claude de Anthropic, Gemini de Google y adaptadores locales como Ollama). La integración de LLMs está abstraída mediante adaptadores (`app/infrastructure/llm/`) y una `LLMFactory` que permite estrategias de conmutación por error, ensemble y enrutamiento.
 
 ---
 
@@ -57,8 +57,8 @@ El sistema sigue el patrón de **Arquitectura Hexagonal (Ports & Adapters)**, ta
     |         |          |            |
 +---v---------v----------v------------v------------------+
 |              Capa de Infraestructura                   |
-|   MongoDB  PostgreSQL  Redis  Claude  Gemini  Export   |
-|   (Adaptadores de salida)                              |
+|   MongoDB  PostgreSQL  Redis  Claude  Gemini  Ollama  |
+|   (Adaptadores de salida, exportadores y adaptadores LLM)|
 +--------------------------------------------------------+
 ```
 
@@ -83,13 +83,14 @@ El sistema está organizado en siete módulos principales, cada uno con una resp
 | **3.5 - Data Structures** | `app/core/data_structures/` | Detectar estructuras de datos |
 | **4 - Visualization** | `app/core/visualization/` | Generar visualizaciones gráficas |
 | **5 - Services** | `app/services/` | Orquestar flujos de negocio complejos |
-| **6 - Infrastructure** | `app/infrastructure/` | Bases de datos, LLMs, exportadores |
+| **6 - Infrastructure** | `app/infrastructure/` | Bases de datos, LLMs, exportadores, agentes, tasks y telemetría |
 
 Además, existen dos módulos opcionales:
 
 | Módulo | Directorio | Responsabilidad |
 |--------|-----------|-----------------|
 | **Profiling** | `app/profiling/` | Métricas de rendimiento del sistema |
+| **Parallel** | `app/parallel/` | Utilidades y pools para ejecución concurrente/async |
 | **Dataset Generator** | `dataset_generator/` | Generar datasets para ML y testing |
 
 ---
@@ -238,9 +239,15 @@ La generación de visualizaciones usa **NetworkX** para construir los grafos int
 
 Los servicios (`app/services/`) coordinan múltiples módulos del dominio para implementar casos de uso complejos. Actúan como orquestadores.
 
-### AnalysisOrchestrator
+### Pipelines y `AnalysisOrchestrator`
 
-Es el servicio central. Recibe un `CompleteAnalysisRequest` y ejecuta el pipeline completo de análisis, manejando errores parciales y devolviendo un resultado coherente aunque algún módulo falle.
+El `AnalysisOrchestrator` actúa como orquestador central y materializa pipelines configurables ubicados en `app/services/pipelines/`. Un pipeline típico encadena pasos (`parse_step.py`, `complexity_step.py`, `pattern_step.py`, `structure_step.py`, `llm_validation_step.py`, `summarize_step.py`) permitiendo manejo fino de errores, retries y ejecución parcial. El orquestador soporta:
+
+- Ejecución síncrona y asíncrona del pipeline.
+- Paralelización de tareas independientes (por ejemplo, exportadores en paralelo).
+- Integración con `CacheService`, `ExportService` y el sistema de agentes.
+
+Recibe un `CompleteAnalysisRequest` y devuelve `AnalysisResult`, aplicando políticas de resiliencia (timeouts, circuit-breaker para llamadas a LLMs, fallbacks a modelos de respaldo).
 
 ### CacheService
 
@@ -273,11 +280,19 @@ Esto permite cambiar la base de datos subyacente sin modificar la lógica de neg
 
 ### Patrón Adapter para LLMs
 
-Cada LLM (Claude, Gemini) implementa la misma interfaz `BaseLLM`. El `LLMFactory` crea el adaptador correcto según la configuración. Si el LLM primario falla, el sistema automáticamente usa el de respaldo.
+Cada LLM (Claude, Gemini, Ollama, etc.) implementa la misma interfaz `BaseLLM` ubicada en `app/infrastructure/llm/`. Componentes concretos detectados en el código:
+
+- `llm_factory.py`: seleccionado dinámicamente según configuración y flags de runtime.
+- `llm_circuit_breaker.py`: aplica timeouts, límites y fallbacks.
+- `llm_ensemble.py` / `llm_evaluator.py`: estrategias para combinar respuestas y validar consistencia entre modelos.
+- `llm_router.py` y `prompt_templates.py`: ruteo y plantillas de prompt reutilizables.
+- `response_parser.py`: normaliza la salida de distintos proveedores.
+
+El `LLMFactory` y el `llm_circuit_breaker` permiten políticas de conmutación por error y degradación controlada; cuando el LLM primario falla, se intenta un modelo de respaldo o se marca la validación como degradada, manteniendo la respuesta principal del análisis.
 
 ### Exportadores
 
-Cada formato de exportación implementa `BaseExporter`. El `ExporterFactory` los registra y los crea bajo demanda. La exportación a múltiples formatos se ejecuta en paralelo con `ThreadPoolExecutor`.
+Cada formato de exportación implementa `BaseExporter` (por ejemplo `pdf_exporter.py`, `json_exporter.py`, `mermaid_exporter.py`, `dot_exporter.py`, `svg_exporter.py`). El `ExporterFactory` los registra y los crea bajo demanda. Las exportaciones se pueden ejecutar en paralelo mediante `ThreadPoolExecutor` o colas de tareas cuando se delega a workers (Celery).
 
 ---
 
@@ -293,7 +308,7 @@ Almacena datos no estructurados o semi-estructurados que cambian frecuentemente:
 - **analysis_results**: Resultados completos de análisis
 - **pattern_detections**: Detecciones de patrones con toda su metadata
 
-MongoDB se eligió porque los resultados de análisis son documentos JSON complejos con estructura variable, que no encajan bien en tablas relacionales.
+MongoDB se eligió porque los resultados de análisis son documentos JSON complejos con estructura variable, que no encajan bien en tablas relacionales. En el repositorio se observan modelos Beanie en `app/infrastructure/database/models/mongo/` (por ejemplo `algorithm.py`, `analysis_result.py`) y repositorios específicos en `app/infrastructure/database/repositories/`, que encapsulan el acceso a la capa de persistencia.
 
 ### PostgreSQL (SQLAlchemy + Asyncpg)
 
@@ -303,7 +318,7 @@ Almacena datos estructurados con relaciones fuertes:
 - **sessions**: Sesiones y tokens de autenticación
 - **audit_logs**: Registro completo de eventos del sistema
 
-PostgreSQL se eligió para datos que requieren integridad transaccional y consultas relacionales.
+PostgreSQL se eligió para datos que requieren integridad transaccional y consultas relacionales. Los modelos SQLAlchemy y adaptadores se encuentran en `app/infrastructure/database/models/postgres/` y el cliente/aspectos de conexión en `postgresql_client.py`.
 
 ### Redis
 
@@ -340,7 +355,7 @@ ValidationAgent
 Resultado validado por IA
 ```
 
-Cada agente recibe el estado compartido (`AgentState`), realiza su tarea y pasa el estado enriquecido al siguiente agente. El `ValidationAgent` usa un LLM para revisar los resultados del análisis estático y señalar posibles imprecisiones.
+Cada agente recibe el estado compartido (`AgentState`), realiza su tarea y pasa el estado enriquecido al siguiente agente. Componentes detectados en el repositorio incluyen `coordinator_agent.py`, `parser_agent.py`, `complexity_agent.py`, `pattern_agent.py`, `validation_agent.py` y utilidades para orquestación (`agent_graph.py`). El `ValidationAgent` puede combinar salidas vía `llm_ensemble` y utiliza `llm_router`/`prompt_templates` para controlar costos y precisión.
 
 ---
 
@@ -375,6 +390,16 @@ Permite que los módulos de dominio sean completamente independientes de FastAPI
 - Migrar de MongoDB a otra base de datos sin modificar los módulos de dominio
 
 ---
+
+## Testing y Calidad
+
+El repositorio incluye una suite de pruebas amplia bajo `tests/` (unit, integration, e2e, smoke, load). Cada módulo crítico (parser, analyzer, patterns, infrastructure adapters, services y agentes) cuenta con tests asociados. La separación por capas facilita:
+
+- Tests unitarios con mocks para adaptadores externos (BD, LLMs, exporters).
+- Tests de integración que validan el pipeline completo y la interacción con MongoDB/Postgres/Redis (configurables mediante fixtures y Docker Compose).
+- Tests E2E para el flujo de análisis completo y exportación.
+
+La CI (cuando esté configurada) debe ejecutar primero los tests unitarios, luego los integration/e2e en entornos controlados.
 
 ## Diagrama de Componentes
 

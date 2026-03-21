@@ -262,6 +262,8 @@ print(f"Theta: {result.theta}")
 print(f"Tiempo de analisis: {result.analysis_time}s")
 ```
 
+Nota: `AnalyzerEngine` está diseñado para integrarse como un paso dentro de los pipelines de `app/services/pipelines/` y puede ser invocado tanto de forma síncrona como asíncrona por el `AnalysisOrchestrator`. Esto permite ejecutar el análisis como parte de flujos compuestos (paralelización de exportadores, validación por LLMs, caching, etc.).
+
 ---
 
 ## Ecuaciones de Recurrencia
@@ -686,9 +688,11 @@ def test_while_with_division()
 | Limitacion | Estado |
 |------------|--------|
 | Analisis Amortizado | No implementado |
-| Estructuras Complejas | Solo arrays basicos |
+| Estructuras Complejas | Soporte ampliado más allá de arrays básicos (ver `app/core/data_structures/`) |
 | Punteros | No disponible |
 | Casos promedio probabilisticos | Simplificado |
+
+Nota: el módulo de análisis se beneficia de detectores adicionales en `app/core/data_structures/` y puede delegar tareas costosas a `app/parallel/` para ejecuciones concurrentes cuando procede.
 
 ---
 

@@ -30,6 +30,8 @@ El sistema acepta pseudocódigo estructurado inspirado en el estilo PSeInt. La g
 
 El pseudocódigo acepta variantes tanto en español como en inglés para la mayoría de las palabras clave, lo que permite a los usuarios escribir en el idioma que les resulte más natural.
 
+Nota de implementación: La gramática concreta se encuentra en `app/core/parser/grammar/pseudocode.lark` y es consumida por `PseudocodeParser` (`app/core/parser/pseudocode_parser.py`) que utiliza Lark en modo `lalr` (cacheado). El parser aplica validaciones previas (tamaño máximo, número de líneas) y soporta timeouts configurables (`settings.PARSER_TIMEOUT`). Si actualizas esta especificación, revisa también la gramática `.lark` y `ASTBuilder` para mantener la coherencia.
+
 ---
 
 ## Convenciones y Notación

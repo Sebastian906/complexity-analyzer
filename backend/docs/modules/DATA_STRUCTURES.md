@@ -658,13 +658,13 @@ def analyze_algorithm_complete(code: str):
 | Detección de Punteros | Limitada en pseudocódigo |
 | Estructuras Anidadas | Detección simplificada |
 | Sets/Multisets | No implementado |
-| Heaps | No implementado |
+| Heaps | Implementado (ver `heap_detector.py`) |
 
 ---
 
 ## Próximos Pasos
 
-1. Implementar detectores de Set y Heap
+1. Implementar detectores de Set y Heap (Sets/Multisets todavía pendientes)
 2. Mejorar detección de estructuras anidadas
 3. Agregar análisis de complejidad específico por estructura
 4. Integrar con sistema de recomendaciones de optimización

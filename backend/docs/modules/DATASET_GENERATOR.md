@@ -140,6 +140,8 @@ class ComplexityLabel:
 
 El etiquetador usa directamente el `AnalyzerEngine` y el `PatternDetector` del sistema, garantizando que las etiquetas sean consistentes con lo que el sistema produce en producción.
 
+Integración con servicios: la generación y exportación de datasets puede integrarse con las utilidades de exportación e infraestructura (por ejemplo, los exportadores en `infrastructure/export/` o el `ExportService` en la capa de servicios) para automatizar la persistencia y distribución de los datasets.
+
 ### 3. SyntheticDataCreator - Creador de Datos Sintéticos
 
 Orquesta la generación y balanceo del dataset completo. Se asegura de que cada clase (patrón algorítmico) esté representada con suficientes ejemplos.

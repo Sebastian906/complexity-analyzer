@@ -506,6 +506,8 @@ if leaks:
 
 ## Integración
 
+Las utilidades de profiling se usan a lo largo de la capa de servicios y de infraestructura (por ejemplo en `AnalysisOrchestrator` y en agentes/handlers) y pueden habilitarse globalmente mediante `enable_profiling()`. Los reportes JSON generados por `PerformanceMonitor` y `ExecutionTimer` pueden exportarse y consumirse por pipelines de observabilidad o análisis offline.
+
 ### Con FastAPI
 
 ```python

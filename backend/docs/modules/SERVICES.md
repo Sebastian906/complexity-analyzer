@@ -42,6 +42,8 @@ El módulo de servicios actúa como capa de orquestación entre la API REST y lo
 
 ---
 
+- **Integración con pipelines y agentes**: `AnalysisOrchestrator` integra los pasos de análisis con los pipelines en `app/services/pipelines/` y puede delegar ejecución distribuida al `CoordinatorAgent` dentro de `app/infrastructure/agents/`.
+
 ## Arquitectura
 
 ```
@@ -138,6 +140,8 @@ Código → Parse → Complexity → Patterns → Structures → Visualization �
 - Nombres de variables descriptivos
 - Complejidad ciclomática
 - Profundidad de anidación
+
+Nota: `ValidationService` puede opcionalmente delegar validaciones avanzadas a agentes o LLMs mediante la `LLMFactory` y los adaptadores en `app/infrastructure/llm/` (por ejemplo Claude, Gemini y Ollama). Esta integración se usa en pasos de validación cuando está habilitada y mantiene degradación segura si los LLMs no están disponibles.
 
 ### 4. ExportService - Exportación Multi-Formato
 

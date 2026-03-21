@@ -580,6 +580,8 @@ def test_recursion_type_detection()
 
 ## Integración con Módulos
 
+Las funciones de visualización se invocan desde el `AnalysisOrchestrator` y otros servicios para generar representaciones que pueden ser exportadas mediante los exportadores de infraestructura (`infrastructure/export/`).
+
 El módulo de visualización se integra con todos los módulos anteriores:
 
 ```

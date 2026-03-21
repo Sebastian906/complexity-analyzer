@@ -74,6 +74,16 @@ python -m app.main
 
 El servidor estará corriendo en: **http://localhost:8000**
 
+### Opción 4: Levantar todo con Docker Compose
+
+Para un entorno local completo (API + MongoDB + Redis + Celery workers):
+
+```bash
+docker-compose up --build
+```
+
+Si no necesitas los workers asíncronos ni servicios externos puedes seguir con las opciones de Uvicorn o `scripts/run_dev.py`.
+
 ## Documentación Interactiva (Swagger)
 
 Una vez que el servidor esté corriendo, abre tu navegador:
